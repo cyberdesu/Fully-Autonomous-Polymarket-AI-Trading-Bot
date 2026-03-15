@@ -318,6 +318,9 @@ class TradingEngine:
                 except Exception as e:
                     log.warning("engine.hook_error", hook=str(hook), error=str(e))
 
+            # Sync positions with on-chain state first
+            await self._reconcile_positions()
+
             can_trade, dd_reason = self.drawdown.can_trade()
             if not can_trade:
                 log.warning("engine.drawdown_halt", reason=dd_reason)
@@ -1266,16 +1269,25 @@ class TradingEngine:
         2. Import on-chain positions that are missing from DB (DB reset / manual buy)
         """
         import os
-        from src.connectors.polymarket_data import PolymarketDataClient
+        from src.connectors.polymarket_data import DataAPIClient
         from src.storage.models import PositionRecord
 
+        # Determine our wallet address (funder or derived from private key)
         funder = os.environ.get("POLYMARKET_FUNDER_ADDRESS", "")
+        if not funder:
+            pk = os.environ.get("POLYMARKET_PRIVATE_KEY", "")
+            if pk:
+                try:
+                    from eth_account import Account
+                    funder = Account.from_key(pk).address
+                except Exception:
+                    pass
         if not funder:
             return  # can't reconcile without knowing our wallet
 
         db_positions = self._db.get_open_positions()
 
-        data_client = PolymarketDataClient()
+        data_client = DataAPIClient()
         try:
             on_chain = await data_client.get_positions(
                 funder, sort_by="CURRENT", limit=200,
