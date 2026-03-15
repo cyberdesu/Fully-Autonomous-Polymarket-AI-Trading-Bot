@@ -1308,7 +1308,8 @@ class TradingEngine:
         """
         import os
         from src.connectors.polymarket_data import DataAPIClient
-        from src.storage.models import PositionRecord
+        from src.connectors.polymarket_gamma import classify_market_type
+        from src.storage.models import MarketRecord, PositionRecord
 
         # Determine our wallet address
         # Priority: POLYMARKET_FUNDER_ADDRESS (required for proxy/Google login)
@@ -1386,10 +1387,52 @@ class TradingEngine:
                         "engine",
                     )
 
-            # ── 2. Import on-chain positions missing from DB ──
+            # ── 2. Update existing positions with on-chain truth ──
+            for pos in db_positions:
+                if pos.token_id and pos.token_id in on_chain_by_token:
+                    wp = on_chain_by_token[pos.token_id]
+                    # Sync entry price, size, current price, and P&L from chain
+                    needs_update = (
+                        abs(pos.entry_price - wp.avg_price) > 0.001
+                        or abs(pos.size - wp.size) > 0.01
+                    )
+                    if needs_update:
+                        log.info(
+                            "engine.reconcile_updated",
+                            market_id=pos.market_id[:8],
+                            old_entry=round(pos.entry_price, 4),
+                            new_entry=round(wp.avg_price, 4),
+                            old_size=round(pos.size, 2),
+                            new_size=round(wp.size, 2),
+                        )
+                    pnl = round(wp.cash_pnl, 4)
+                    question = pos.question or wp.title[:200]
+                    mtype = classify_market_type(question)
+                    self._db.upsert_position(PositionRecord(
+                        market_id=pos.market_id,
+                        token_id=pos.token_id,
+                        direction=pos.direction,
+                        entry_price=wp.avg_price,
+                        size=wp.size,
+                        stake_usd=round(wp.initial_value, 2),
+                        current_price=wp.cur_price,
+                        pnl=pnl,
+                        question=question,
+                        market_type=mtype,
+                    ))
+                    # Ensure market record exists (fills TYPE column in dashboard)
+                    self._db.upsert_market(MarketRecord(
+                        id=pos.market_id,
+                        condition_id=wp.condition_id or "",
+                        question=question,
+                        market_type=mtype,
+                        category=mtype,
+                    ))
+
+            # ── 3. Import on-chain positions missing from DB ──
             for token_id, wp in on_chain_by_token.items():
                 if token_id in db_token_ids:
-                    continue  # already tracked
+                    continue  # already tracked or updated above
 
                 direction = "BUY_YES" if wp.outcome.lower() == "yes" else "BUY_NO"
                 market_id = wp.condition_id or wp.market_slug or token_id[:16]
@@ -1406,6 +1449,9 @@ class TradingEngine:
                     title=wp.title[:50],
                 )
 
+                question = wp.title[:200]
+                mtype = classify_market_type(question)
+
                 self._db.upsert_position(PositionRecord(
                     market_id=market_id,
                     token_id=token_id,
@@ -1415,7 +1461,17 @@ class TradingEngine:
                     stake_usd=round(wp.initial_value, 2),
                     current_price=wp.cur_price,
                     pnl=pnl,
-                    question=wp.title[:200],
+                    question=question,
+                    market_type=mtype,
+                ))
+
+                # Ensure market record exists (fills TYPE column in dashboard)
+                self._db.upsert_market(MarketRecord(
+                    id=market_id,
+                    condition_id=wp.condition_id or "",
+                    question=question,
+                    market_type=mtype,
+                    category=mtype,
                 ))
 
                 # Create trade record so dashboard shows it as Live (not Paper)

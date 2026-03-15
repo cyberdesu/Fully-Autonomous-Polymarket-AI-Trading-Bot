@@ -601,7 +601,10 @@ def api_positions() -> Any:
     _ensure_tables(conn)
     try:
         rows = conn.execute("""
-            SELECT p.*, m.question, m.market_type
+            SELECT p.market_id, p.token_id, p.direction, p.entry_price,
+                   p.current_price, p.size, p.stake_usd, p.pnl, p.opened_at,
+                   COALESCE(m.question, p.question) AS question,
+                   COALESCE(m.market_type, p.market_type, '') AS market_type
             FROM positions p
             LEFT JOIN markets m ON p.market_id = m.id
             ORDER BY p.opened_at DESC
@@ -869,7 +872,8 @@ def api_trades() -> Any:
         open_rows = conn.execute("""
             SELECT p.market_id, p.token_id, p.direction, p.entry_price,
                    p.current_price, p.size, p.stake_usd, p.pnl, p.opened_at,
-                   m.question, m.market_type
+                   COALESCE(m.question, p.question) AS question,
+                   COALESCE(m.market_type, p.market_type, '') AS market_type
             FROM positions p
             LEFT JOIN markets m ON p.market_id = m.id
             ORDER BY p.opened_at DESC
