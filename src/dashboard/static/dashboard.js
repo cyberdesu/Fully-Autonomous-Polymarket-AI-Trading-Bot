@@ -1155,88 +1155,243 @@ function updateCopyTradingBadge(enabled) {
 
 // ─── Copy Trades Tab ────────────────────────────────────────────
 async function refreshCopyTrades() {
-    const d = await apiFetch('/api/copy-trades');
-    if (!d) return;
+    const [d, whale] = await Promise.all([
+        apiFetch('/api/copy-trades'),
+        apiFetch('/api/whale-activity'),
+    ]);
 
-    const s = d.stats || {};
+    // ── Copy Trade Stats ────────────────────────────────────────
+    if (d) {
+        const s = d.stats || {};
 
-    // Mode badge
-    const modeBadge = document.getElementById('ct-mode-badge');
-    if (modeBadge) {
-        if (s.simulate_only) {
-            modeBadge.textContent = 'SIMULATE';
-            modeBadge.className = 'badge badge-paper';
-        } else {
-            modeBadge.textContent = 'LIVE';
-            modeBadge.className = 'badge badge-live';
+        // Mode badge
+        const modeBadge = document.getElementById('ct-mode-badge');
+        if (modeBadge) {
+            if (s.simulate_only) {
+                modeBadge.textContent = 'SIMULATE';
+                modeBadge.className = 'badge badge-paper';
+            } else {
+                modeBadge.textContent = 'LIVE';
+                modeBadge.className = 'badge badge-live';
+            }
         }
-    }
 
-    // KPI cards
-    safeText($('#ct-total-entries'), String(s.total_entries || 0));
-    safeText($('#ct-entries-sub'), `Simulated: ${s.simulated || 0} | Live: ${s.live || 0}`);
+        // KPI cards row 1
+        safeText($('#ct-total-entries'), String(s.total_entries || 0));
+        safeText($('#ct-entries-sub'), `Simulated: ${s.simulated || 0} | Live: ${s.live || 0}`);
 
-    const pnlEl = $('#ct-total-pnl');
-    if (pnlEl) {
-        pnlEl.textContent = fmtD(s.total_pnl || 0);
-        pnlEl.className = `card-value ${pnlClass(s.total_pnl || 0)}`;
-    }
-    safeText($('#ct-roi'), `ROI: ${fmtP(s.roi_pct || 0)}%`);
-
-    safeText($('#ct-open-count'), String((d.open_positions || []).length));
-    safeText($('#ct-staked'), `Staked: ${fmtD(s.total_staked || 0)}`);
-    safeText($('#ct-total-exits'), String(s.total_exits || 0));
-
-    // Open copy positions table
-    const openBody = document.getElementById('ct-open-positions-body');
-    if (openBody) {
-        if (!d.open_positions || !d.open_positions.length) {
-            safeHTML(openBody, '<tr><td colspan="9" style="text-align:center;color:#5a5e72;">No open copy positions</td></tr>');
-        } else {
-            safeHTML(openBody, d.open_positions.map(p => {
-                const pnl = p.pnl || 0;
-                return `<tr>
-                    <td title="${p.question || ''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(p.question || p.market_id || '').substring(0, 40)}</td>
-                    <td>${p.copy_source || ''}</td>
-                    <td>${p.market_type || ''}</td>
-                    <td>${fmtP((p.entry_price || 0) * 100)}c</td>
-                    <td>${fmtP((p.current_price || 0) * 100)}c</td>
-                    <td>${fmt(p.size || 0, 2)}</td>
-                    <td>${fmtD(p.stake_usd || 0)}</td>
-                    <td class="${pnlClass(pnl)}">${fmtD(pnl)}</td>
-                    <td>${shortDate(p.opened_at)}</td>
-                </tr>`;
-            }).join(''));
+        const pnlEl = $('#ct-total-pnl');
+        if (pnlEl) {
+            pnlEl.textContent = fmtD(s.total_pnl || 0);
+            pnlEl.className = `card-value ${pnlClass(s.total_pnl || 0)}`;
         }
+        safeText($('#ct-roi'), `ROI: ${fmtP(s.roi_pct || 0)}%`);
+        safeText($('#ct-open-count'), String((d.open_positions || []).length));
+        safeText($('#ct-staked'), `Staked: ${fmtD(s.total_staked || 0)}`);
+        safeText($('#ct-total-exits'), String(s.total_exits || 0));
+
+        // Open copy positions table
+        _renderCopyPositions(d.open_positions || []);
+        // Copy trade log table
+        _renderCopyLog(d.trades || []);
     }
 
-    // Copy trade log table
-    const logBody = document.getElementById('ct-log-body');
-    if (logBody) {
-        if (!d.trades || !d.trades.length) {
-            safeHTML(logBody, '<tr><td colspan="10" style="text-align:center;color:#5a5e72;">No copy trades yet</td></tr>');
-        } else {
-            safeHTML(logBody, d.trades.map(t => {
-                const isSim = t.is_simulated;
-                const actionClass = t.action === 'COPY_ENTRY' ? 'pnl-positive' : 'pnl-negative';
-                const modeLabel = isSim ? '<span class="pill" style="background:rgba(255,159,67,0.15);color:#ff9f43;">SIM</span>'
-                                        : '<span class="pill" style="background:rgba(0,214,143,0.15);color:#00d68f;">LIVE</span>';
-                const pnl = t.pnl || 0;
-                return `<tr>
-                    <td>${shortDate(t.created_at)}</td>
-                    <td class="${actionClass}">${t.action || ''}</td>
-                    <td>${modeLabel}</td>
-                    <td>${t.whale_name || ''}</td>
-                    <td title="${t.market_slug || ''}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(t.market_slug || '').substring(0, 30)}</td>
-                    <td>${t.direction || ''}</td>
-                    <td>${fmtP((t.price || 0) * 100)}c</td>
-                    <td>${fmtD(t.stake_usd || 0)}</td>
-                    <td class="${pnlClass(pnl)}">${t.action === 'COPY_EXIT' ? fmtD(pnl) : '—'}</td>
-                    <td>${t.status || ''}</td>
-                </tr>`;
-            }).join(''));
+    // ── Whale Intelligence ──────────────────────────────────────
+    if (whale) {
+        const wallets = whale.wallets || [];
+        const signals = whale.signals || [];
+        const deltas = whale.deltas || [];
+        const summary = whale.summary || {};
+        const momentum = whale.momentum || [];
+
+        // KPI cards row 2
+        safeText($('#ct-whale-count'), String(wallets.length));
+        const activeWhales = wallets.filter(w => (w.active_positions || 0) > 0).length;
+        safeText($('#ct-whale-active'), `Active: ${activeWhales}`);
+
+        const smi = summary.smart_money_index || 50;
+        const smiEl = $('#ct-smi');
+        if (smiEl) {
+            smiEl.textContent = fmtP(smi);
+            smiEl.className = `card-value ${smi > 55 ? 'pnl-positive' : smi < 45 ? 'pnl-negative' : 'pnl-zero'}`;
         }
+        const smiLabel = smi > 60 ? 'Bullish' : smi > 55 ? 'Slightly Bullish' : smi < 40 ? 'Bearish' : smi < 45 ? 'Slightly Bearish' : 'Neutral';
+        safeText($('#ct-smi-label'), smiLabel);
+
+        safeText($('#ct-signal-count'), String(signals.length));
+        const strongSigs = signals.filter(s => s.signal_strength === 'STRONG').length;
+        const modSigs = signals.filter(s => s.signal_strength === 'MODERATE').length;
+        safeText($('#ct-signal-breakdown'), `Strong: ${strongSigs} | Moderate: ${modSigs}`);
+
+        // Net flow from momentum (24h window)
+        const flow24 = momentum.find(m => m.window === '24h') || {};
+        const netFlowEl = $('#ct-net-flow');
+        if (netFlowEl) {
+            const nf = flow24.net_flow || 0;
+            netFlowEl.textContent = `$${Math.abs(nf).toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+            netFlowEl.className = `card-value ${nf > 0 ? 'pnl-positive' : nf < 0 ? 'pnl-negative' : 'pnl-zero'}`;
+            if (nf > 0) netFlowEl.textContent = '+' + netFlowEl.textContent;
+            if (nf < 0) netFlowEl.textContent = '-' + netFlowEl.textContent.replace('$','$');
+        }
+        safeText($('#ct-flow-detail'), `In: $${(flow24.flow_in||0).toLocaleString()} | Out: $${(flow24.flow_out||0).toLocaleString()}`);
+
+        // Conviction signals table
+        _renderConvictionSignals(signals);
+
+        // Live whale moves
+        _renderWhaleDeltas(deltas);
+        safeText($('#ct-delta-count'), `${deltas.length} moves`);
+
+        // Leaderboard
+        _renderWhaleLeaderboard(wallets);
+
+        // Last scan time
+        const lastScan = summary.last_scan || (wallets.length ? wallets[0].last_scanned : null);
+        safeText($('#ct-signal-updated'), lastScan ? `Last scan: ${shortDate(lastScan)}` : '—');
     }
+}
+
+function _renderConvictionSignals(signals) {
+    const body = document.getElementById('ct-signals-body');
+    if (!body) return;
+    if (!signals.length) {
+        safeHTML(body, '<tr><td colspan="10" style="text-align:center;color:#5a5e72;">No conviction signals yet — enable Whale Scanner</td></tr>');
+        return;
+    }
+    // Show top 20 by conviction score
+    const top = signals.slice(0, 20);
+    safeHTML(body, top.map(s => {
+        const dir = s.direction || '';
+        const dirClass = dir === 'BULLISH' ? 'pnl-positive' : dir === 'BEARISH' ? 'pnl-negative' : '';
+        const str = s.signal_strength || 'WEAK';
+        const strColor = str === 'STRONG' ? '#00d68f' : str === 'MODERATE' ? '#ff9f43' : '#5a5e72';
+        const avgP = s.avg_whale_price || 0;
+        const curP = s.current_price || 0;
+        const edge = avgP > 0 ? ((curP - avgP) / avgP * 100) : 0;
+        const names = (s.whale_names || []).slice(0, 3).join(', ');
+        const more = (s.whale_names || []).length > 3 ? ` +${s.whale_names.length - 3}` : '';
+        return `<tr>
+            <td title="${s.title || s.market_slug || ''}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(s.title || s.market_slug || '').substring(0, 45)}</td>
+            <td class="${dirClass}">${dir}</td>
+            <td><span style="color:${strColor};font-weight:600;">${str}</span></td>
+            <td>${fmtP(s.conviction_score || 0)}</td>
+            <td>${s.whale_count || 0}</td>
+            <td>$${(s.total_whale_usd || 0).toLocaleString()}</td>
+            <td>${fmtP(avgP * 100)}c</td>
+            <td>${fmtP(curP * 100)}c</td>
+            <td class="${pnlClass(edge)}">${edge >= 0 ? '+' : ''}${fmtP(edge)}%</td>
+            <td title="${(s.whale_names||[]).join(', ')}" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${names}${more}</td>
+        </tr>`;
+    }).join(''));
+}
+
+function _renderWhaleDeltas(deltas) {
+    const body = document.getElementById('ct-deltas-body');
+    if (!body) return;
+    if (!deltas.length) {
+        safeHTML(body, '<tr><td colspan="8" style="text-align:center;color:#5a5e72;">No recent whale moves</td></tr>');
+        return;
+    }
+    // Show latest 50
+    const recent = deltas.slice(0, 50);
+    safeHTML(body, recent.map(d => {
+        const action = d.action || '';
+        let actionColor = '#5a5e72';
+        let actionIcon = '';
+        if (action === 'NEW_ENTRY') { actionColor = '#00d68f'; actionIcon = ''; }
+        else if (action === 'SIZE_INCREASE') { actionColor = '#4c8dff'; actionIcon = ''; }
+        else if (action === 'EXIT') { actionColor = '#ff4d6a'; actionIcon = ''; }
+        else if (action === 'SIZE_DECREASE') { actionColor = '#ff9f43'; actionIcon = ''; }
+        return `<tr>
+            <td>${shortDate(d.detected_at)}</td>
+            <td style="font-weight:600;">${d.wallet_name || ''}</td>
+            <td><span style="color:${actionColor};font-weight:600;">${actionIcon} ${action}</span></td>
+            <td title="${d.title || d.market_slug || ''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(d.title || d.market_slug || '').substring(0, 40)}</td>
+            <td>${d.outcome || '—'}</td>
+            <td>${fmt(Math.abs(d.size_change || 0), 2)}</td>
+            <td class="${pnlClass(d.value_change_usd || 0)}">${fmtD(Math.abs(d.value_change_usd || 0))}</td>
+            <td>${d.current_price > 0 ? fmtP(d.current_price * 100) + 'c' : '—'}</td>
+        </tr>`;
+    }).join(''));
+}
+
+function _renderWhaleLeaderboard(wallets) {
+    const body = document.getElementById('ct-leaderboard-body');
+    if (!body) return;
+    if (!wallets.length) {
+        safeHTML(body, '<tr><td colspan="9" style="text-align:center;color:#5a5e72;">No tracked whales</td></tr>');
+        return;
+    }
+    // Top 15 by score
+    const top = wallets.slice(0, 15);
+    safeHTML(body, top.map((w, i) => {
+        const tier = w.tier || 'RISING';
+        const tierColors = { LEGENDARY: '#fbbf24', ELITE: '#a855f7', PRO: '#4c8dff', RISING: '#5a5e72' };
+        const pnl = w.total_pnl || 0;
+        const wr = w.win_rate || 0;
+        return `<tr>
+            <td style="font-weight:700;color:#4c8dff;">#${i + 1}</td>
+            <td style="font-weight:600;">${w.name || w.address?.substring(0, 10) || '—'}${w.is_starred ? ' ★' : ''}</td>
+            <td><span style="color:${tierColors[tier] || '#5a5e72'};font-weight:700;">${tier}</span></td>
+            <td>${fmtP(w.score || 0)}</td>
+            <td class="${pnlClass(pnl)}">$${Math.abs(pnl).toLocaleString()}</td>
+            <td>${fmtP(wr)}%</td>
+            <td>$${(w.total_volume || 0).toLocaleString()}</td>
+            <td>${w.active_positions || 0}</td>
+            <td>${w.recent_activity || 0} moves</td>
+        </tr>`;
+    }).join(''));
+}
+
+function _renderCopyPositions(positions) {
+    const body = document.getElementById('ct-open-positions-body');
+    if (!body) return;
+    if (!positions.length) {
+        safeHTML(body, '<tr><td colspan="9" style="text-align:center;color:#5a5e72;">No open copy positions</td></tr>');
+        return;
+    }
+    safeHTML(body, positions.map(p => {
+        const pnl = p.pnl || 0;
+        return `<tr>
+            <td title="${p.question || ''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(p.question || p.market_id || '').substring(0, 40)}</td>
+            <td style="font-weight:600;">${p.copy_source || ''}</td>
+            <td>${p.market_type || ''}</td>
+            <td>${fmtP((p.entry_price || 0) * 100)}c</td>
+            <td>${fmtP((p.current_price || 0) * 100)}c</td>
+            <td>${fmt(p.size || 0, 2)}</td>
+            <td>${fmtD(p.stake_usd || 0)}</td>
+            <td class="${pnlClass(pnl)}">${fmtD(pnl)}</td>
+            <td>${shortDate(p.opened_at)}</td>
+        </tr>`;
+    }).join(''));
+}
+
+function _renderCopyLog(trades) {
+    const body = document.getElementById('ct-log-body');
+    if (!body) return;
+    if (!trades.length) {
+        safeHTML(body, '<tr><td colspan="10" style="text-align:center;color:#5a5e72;">No copy trades yet</td></tr>');
+        return;
+    }
+    safeHTML(body, trades.map(t => {
+        const isSim = t.is_simulated;
+        const actionClass = t.action === 'COPY_ENTRY' ? 'pnl-positive' : 'pnl-negative';
+        const modeLabel = isSim ? '<span class="pill" style="background:rgba(255,159,67,0.15);color:#ff9f43;">SIM</span>'
+                                : '<span class="pill" style="background:rgba(0,214,143,0.15);color:#00d68f;">LIVE</span>';
+        const pnl = t.pnl || 0;
+        return `<tr>
+            <td>${shortDate(t.created_at)}</td>
+            <td class="${actionClass}">${t.action || ''}</td>
+            <td>${modeLabel}</td>
+            <td style="font-weight:600;">${t.whale_name || ''}</td>
+            <td title="${t.market_slug || ''}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(t.market_slug || '').substring(0, 30)}</td>
+            <td>${t.direction || ''}</td>
+            <td>${fmtP((t.price || 0) * 100)}c</td>
+            <td>${fmtD(t.stake_usd || 0)}</td>
+            <td class="${pnlClass(pnl)}">${t.action === 'COPY_EXIT' ? fmtD(pnl) : '—'}</td>
+            <td>${t.status || ''}</td>
+        </tr>`;
+    }).join(''));
 }
 
 async function updateDrawdown() {

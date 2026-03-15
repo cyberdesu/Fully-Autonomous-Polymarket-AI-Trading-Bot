@@ -957,6 +957,8 @@
     <!-- TAB: COPY TRADES                                        -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="tab-content" id="tab-copytrades" data-tab="copytrades">
+
+        <!-- ─── Header ─────────────────────────────────────────── -->
         <section class="panel">
             <div class="panel-header">
                 <h2 class="panel-title">Copy Trading Dashboard</h2>
@@ -966,8 +968,8 @@
                 </div>
             </div>
 
-            <!-- KPI Cards -->
-            <div class="grid grid-4" style="margin-bottom:16px;">
+            <!-- KPI Cards Row 1 -->
+            <div class="grid grid-4" style="margin-bottom:12px;">
                 <div class="card accent-blue">
                     <div class="card-label">Total Entries</div>
                     <div class="card-value" id="ct-total-entries">0</div>
@@ -990,21 +992,106 @@
                 </div>
             </div>
 
-            <!-- Open Copy Positions Table -->
-            <h3 style="color:#e2e4ed;margin:16px 0 8px;">Open Copy Positions</h3>
+            <!-- KPI Cards Row 2: Whale Intelligence -->
+            <div class="grid grid-4" style="margin-bottom:16px;">
+                <div class="card" style="border-top:3px solid #4c8dff;">
+                    <div class="card-label">Tracked Whales</div>
+                    <div class="card-value" id="ct-whale-count">0</div>
+                    <div class="card-sub" id="ct-whale-active">Active: 0</div>
+                </div>
+                <div class="card" style="border-top:3px solid #00d68f;">
+                    <div class="card-label">Smart Money Index</div>
+                    <div class="card-value" id="ct-smi">50</div>
+                    <div class="card-sub" id="ct-smi-label">Neutral</div>
+                </div>
+                <div class="card" style="border-top:3px solid #a855f7;">
+                    <div class="card-label">Conviction Signals</div>
+                    <div class="card-value" id="ct-signal-count">0</div>
+                    <div class="card-sub" id="ct-signal-breakdown">Strong: 0 | Moderate: 0</div>
+                </div>
+                <div class="card" style="border-top:3px solid #ff9f43;">
+                    <div class="card-label">Net Whale Flow (24h)</div>
+                    <div class="card-value" id="ct-net-flow">$0</div>
+                    <div class="card-sub" id="ct-flow-detail">In: $0 | Out: $0</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Top Whale Conviction Signals ───────────────────── -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Top Conviction Signals — What Whales Are Buying</h2>
+                <span class="card-sub" id="ct-signal-updated">—</span>
+            </div>
             <div class="table-wrap">
                 <table>
                     <thead><tr>
-                        <th>Market</th><th>Source</th><th>Type</th>
+                        <th>Market</th><th>Direction</th><th>Strength</th>
+                        <th>Score</th><th>Whales</th><th>Total $</th>
+                        <th>Avg Entry</th><th>Current</th><th>Edge</th><th>Names</th>
+                    </tr></thead>
+                    <tbody id="ct-signals-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ─── Live Whale Activity Feed ───────────────────────── -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Live Whale Moves</h2>
+                <span class="card-sub" id="ct-delta-count">0 moves</span>
+            </div>
+            <div class="table-wrap" style="max-height:400px;overflow-y:auto;">
+                <table>
+                    <thead><tr>
+                        <th>Time</th><th>Whale</th><th>Action</th>
+                        <th>Market</th><th>Outcome</th><th>Size</th>
+                        <th>Value</th><th>Price</th>
+                    </tr></thead>
+                    <tbody id="ct-deltas-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ─── Top Whales Leaderboard ─────────────────────────── -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Top Whales Leaderboard</h2>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr>
+                        <th>Rank</th><th>Name</th><th>Tier</th>
+                        <th>Score</th><th>P&L</th><th>Win Rate</th>
+                        <th>Volume</th><th>Positions</th><th>Recent</th>
+                    </tr></thead>
+                    <tbody id="ct-leaderboard-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ─── Open Copy Positions ────────────────────────────── -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Open Copy Positions</h2>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr>
+                        <th>Market</th><th>Source Whale</th><th>Type</th>
                         <th>Entry</th><th>Current</th><th>Size</th>
                         <th>Stake</th><th>P&L</th><th>Opened</th>
                     </tr></thead>
                     <tbody id="ct-open-positions-body"></tbody>
                 </table>
             </div>
+        </section>
 
-            <!-- Copy Trade Log Table -->
-            <h3 style="color:#e2e4ed;margin:16px 0 8px;">Copy Trade Log</h3>
+        <!-- ─── Copy Trade Log ─────────────────────────────────── -->
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Copy Trade Execution Log</h2>
+            </div>
             <div class="table-wrap">
                 <table>
                     <thead><tr>
@@ -1016,6 +1103,7 @@
                 </table>
             </div>
         </section>
+
     </div>
     <!-- ════════════════════════════════════════════════════════ -->
     <!-- TAB: DECISION INTELLIGENCE                              -->
