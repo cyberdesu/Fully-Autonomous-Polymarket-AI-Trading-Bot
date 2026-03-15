@@ -356,7 +356,7 @@ def paper_trade(ctx: click.Context, days: int, markets: int) -> None:
             console.print(f"\n[green]✓ Paper trade scan complete.[/green]")
             console.print(
                 "Full paper trading loop (with forecasting) requires API keys.\n"
-                "Set OPENAI_API_KEY and SERPAPI_KEY, then use:\n"
+                "Set OPENAI_API_KEY or OPENROUTER_API_KEY (and SERPAPI_KEY), then use:\n"
                 "  bot forecast --market <ID>"
             )
         finally:
@@ -609,10 +609,19 @@ def setup_wallet(ctx: click.Context) -> None:
         try:
             console.print("[cyan]🔍 Checking wallet balance and allowance...[/cyan]")
             state = await clob.get_collateral_allowance()
+            log.debug("clob.balance_allowance_raw", response=state)
+            console.print(f"  [dim]Raw response: {state}[/dim]")
             
             # py-clob-client returns raw units (6 decimals for USDC on Polygon)
             balance = float(state.get("balance", 0)) / 1e6
-            allowance = float(state.get("allowance", 0)) / 1e6
+            
+            # API returns 'allowances' (plural) as a dict of spender -> amount
+            allowances_dict = state.get("allowances", {})
+            if isinstance(allowances_dict, dict) and allowances_dict:
+                # Use the maximum allowance available across all spenders
+                allowance = max(float(v) for v in allowances_dict.values()) / 1e6
+            else:
+                allowance = float(state.get("allowance", 0)) / 1e6
 
             console.print(f"  [bold]Balance:[/bold]   ${balance:,.2f} USDC")
             console.print(f"  [bold]Allowance:[/bold] ${allowance:,.2f} USDC")

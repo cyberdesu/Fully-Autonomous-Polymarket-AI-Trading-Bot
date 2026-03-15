@@ -30,7 +30,8 @@ from typing import Any
 from src.config import ForecastingConfig, ResearchConfig
 from src.observability.logger import get_logger
 from src.research.source_fetcher import FetchedSource
-from src.connectors.llm import create_llm_client
+from src.connectors.llm import create_llm_client, get_llm_provider
+from src.connectors.rate_limiter import rate_limiter
 
 log = get_logger(__name__)
 
@@ -307,6 +308,7 @@ class EvidenceExtractor:
 
     def __init__(self, config: ForecastingConfig):
         self._config = config
+        self._provider = get_llm_provider(self._config.llm_model)
         self._llm = create_llm_client(self._config.llm_model)
 
     async def extract(
@@ -348,22 +350,46 @@ class EvidenceExtractor:
         )
 
         try:
-            resp = await self._llm.chat.completions.create(
-                model=self._config.llm_model,
-                temperature=0.1,
-                max_tokens=self._config.llm_max_tokens,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a precise research analyst. "
-                            "Return only valid JSON. Never fabricate data."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-            )
-            raw_text = resp.choices[0].message.content or "{}"
+            await rate_limiter.get(self._provider).acquire()
+
+            if self._provider in ("openai", "openrouter"):
+                resp = await self._llm.chat.completions.create(
+                    model=self._config.llm_model,
+                    temperature=0.1,
+                    max_tokens=self._config.llm_max_tokens,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a precise research analyst. "
+                                "Return only valid JSON. Never fabricate data."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                )
+                raw_text = resp.choices[0].message.content or "{}"
+
+            elif self._provider == "anthropic":
+                resp = await self._llm.messages.create(
+                    model=self._config.llm_model,
+                    max_tokens=self._config.llm_max_tokens,
+                    temperature=0.1,
+                    system="You are a precise research analyst. Return only valid JSON. Never fabricate data.",
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                raw_text = resp.content[0].text if resp.content else "{}"
+
+            elif self._provider == "google":
+                import asyncio as _asyncio
+                resp = await _asyncio.to_thread(
+                    self._llm.generate_content,
+                    "You are a precise research analyst. Return only valid JSON. Never fabricate data.\n\n" + prompt,
+                )
+                raw_text = resp.text or "{}"
+
+            else:
+                raise ValueError(f"Unsupported provider: {self._provider}")
             raw_text = raw_text.strip()
             if raw_text.startswith("```"):
                 raw_text = raw_text.split("\n", 1)[1] if "\n" in raw_text else raw_text[3:]

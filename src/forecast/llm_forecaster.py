@@ -13,14 +13,12 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from openai import AsyncOpenAI
-
 from src.config import ForecastingConfig
 from src.forecast.feature_builder import MarketFeatures
 from src.research.evidence_extractor import EvidencePackage
 from src.observability.logger import get_logger
 from src.connectors.rate_limiter import rate_limiter
-from src.connectors.llm import create_llm_client
+from src.connectors.llm import create_llm_client, get_llm_provider
 
 log = get_logger(__name__)
 
@@ -143,6 +141,7 @@ class LLMForecaster:
 
     def __init__(self, config: ForecastingConfig):
         self._config = config
+        self._provider = get_llm_provider(self._config.llm_model)
         self._llm = create_llm_client(self._config.llm_model)
 
     async def forecast(
@@ -184,24 +183,55 @@ class LLMForecaster:
         )
 
         try:
-            await rate_limiter.get("openai").acquire()
-            resp = await self._llm.chat.completions.create(
-                model=self._config.llm_model,
-                temperature=self._config.llm_temperature,
-                max_tokens=self._config.llm_max_tokens,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a calibrated probabilistic forecaster. "
-                            "You never claim certainty. You express epistemic humility. "
-                            "Return only valid JSON."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-            )
-            raw_text = resp.choices[0].message.content or "{}"
+            await rate_limiter.get(self._provider).acquire()
+
+            if self._provider in ("openai", "openrouter"):
+                resp = await self._llm.chat.completions.create(
+                    model=self._config.llm_model,
+                    temperature=self._config.llm_temperature,
+                    max_tokens=self._config.llm_max_tokens,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a calibrated probabilistic forecaster. "
+                                "You never claim certainty. You express epistemic humility. "
+                                "Return only valid JSON."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                )
+                raw_text = resp.choices[0].message.content or "{}"
+
+            elif self._provider == "anthropic":
+                resp = await self._llm.messages.create(
+                    model=self._config.llm_model,
+                    max_tokens=self._config.llm_max_tokens,
+                    temperature=self._config.llm_temperature,
+                    system=(
+                        "You are a calibrated probabilistic forecaster. "
+                        "You never claim certainty. You express epistemic humility. "
+                        "Return only valid JSON."
+                    ),
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                raw_text = resp.content[0].text if resp.content else "{}"
+
+            elif self._provider == "google":
+                import asyncio as _asyncio
+                resp = await _asyncio.to_thread(
+                    self._llm.generate_content,
+                    (
+                        "You are a calibrated probabilistic forecaster. "
+                        "Return only valid JSON.\n\n" + prompt
+                    ),
+                )
+                raw_text = resp.text or "{}"
+
+            else:
+                raise ValueError(f"Unsupported provider: {self._provider}")
+
             raw_text = raw_text.strip()
             if raw_text.startswith("```"):
                 raw_text = raw_text.split("\n", 1)[1] if "\n" in raw_text else raw_text[3:]

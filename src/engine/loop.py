@@ -264,7 +264,13 @@ class TradingEngine:
             
             # USDC on Polygon has 6 decimals
             balance = float(state.get("balance", 0)) / 1e6
-            allowance = float(state.get("allowance", 0)) / 1e6
+            
+            # API returns 'allowances' (plural) as a dict of spender -> amount
+            allowances_dict = state.get("allowances", {})
+            if isinstance(allowances_dict, dict) and allowances_dict:
+                allowance = max(float(v) for v in allowances_dict.values()) / 1e6
+            else:
+                allowance = float(state.get("allowance", 0)) / 1e6
 
             log.info("engine.wallet_status", balance=balance, allowance=allowance)
 
