@@ -147,8 +147,14 @@ def calculate_position_size(
     stake = max(0.0, stake)
 
     # Enforce minimum stake floor to avoid dust trades
+    # For small bankrolls (<$50), we round up to min_stake if stake > 0
+    # to ensure the bot can actually execute trades.
     if 0 < stake < risk_config.min_stake_usd:
-        stake = 0.0
+        if risk_config.bankroll < 50.0:
+            log.info("position_sizer.small_bankroll_round_up", original_stake=stake, rounded_stake=risk_config.min_stake_usd)
+            stake = risk_config.min_stake_usd
+        else:
+            stake = 0.0
 
     # Determine what capped it
     if drawdown_multiplier <= 0:

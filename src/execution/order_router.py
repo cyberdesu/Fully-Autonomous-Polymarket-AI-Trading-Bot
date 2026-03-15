@@ -18,6 +18,7 @@ from typing import Any
 
 from src.config import ExecutionConfig, is_live_trading_enabled
 from src.connectors.polymarket_clob import CLOBClient
+from py_clob_client.clob_types import OrderArgs
 from src.execution.order_builder import OrderSpec
 from src.observability.logger import get_logger
 from src.observability.metrics import metrics
@@ -90,10 +91,12 @@ class OrderRouter:
                 # Slippage guard: reject if price deviates beyond tolerance
                 if order.order_type == "limit":
                     resp = signing.create_and_post_order(
-                        token_id=order.token_id,
-                        price=order.price,
-                        size=order.size,
-                        side=order.side,
+                        OrderArgs(
+                            token_id=order.token_id,
+                            price=order.price,
+                            size=order.size,
+                            side=order.side,
+                        )
                     )
                 else:
                     # Market order: use aggressive pricing with slippage tolerance
@@ -104,10 +107,12 @@ class OrderRouter:
                         else max(order.price * (1 - slippage), 0.01)
                     )
                     resp = signing.create_and_post_order(
-                        token_id=order.token_id,
-                        price=aggressive_price,
-                        size=order.size,
-                        side=order.side,
+                        OrderArgs(
+                            token_id=order.token_id,
+                            price=aggressive_price,
+                            size=order.size,
+                            side=order.side,
+                        )
                     )
 
                 log.info(

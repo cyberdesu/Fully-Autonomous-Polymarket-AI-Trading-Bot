@@ -232,17 +232,23 @@ class TradingEngine:
                 log.info("engine.sleeping", seconds=interval)
                 await asyncio.sleep(interval)
 
+        log.info("engine.stopping_ws_feed")
+        if self._ws_task and not self._ws_task.done():
+            try:
+                # Thread-safe cleanup: we are in the main engine loop thread here.
+                await self._ws_feed.stop()
+            except Exception as e:
+                log.warning("engine.ws_stop_error", error=str(e))
+
         log.info("engine.stopped", total_cycles=self._cycle_count)
         if self._db:
             self._db.insert_alert("info", "\U0001f6d1 Trading engine stopped", "system")
             self._persist_engine_state({"running": False})
 
     def stop(self) -> None:
+        """Signal the engine to stop loop after current cycle."""
         log.info("engine.stop_requested")
         self._running = False
-        # Stop WebSocket feed
-        if self._ws_task and not self._ws_task.done():
-            asyncio.ensure_future(self._ws_feed.stop())
 
     def _handle_signal(self, sig: signal.Signals) -> None:
         """Handle SIGTERM/SIGINT for graceful shutdown."""
