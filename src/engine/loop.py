@@ -1260,43 +1260,44 @@ class TradingEngine:
             log.warning("engine.performance_log_error", error=str(e))
 
     async def _reconcile_positions(self) -> None:
-        """Sync DB positions against actual on-chain positions.
+        """Two-way sync between DB positions and actual on-chain positions.
 
-        Detects positions that were sold manually on Polymarket or resolved
-        externally, and removes them from the DB so the bot doesn't try to
-        double-sell.
+        1. Remove DB positions that no longer exist on-chain (manual sell / resolution)
+        2. Import on-chain positions that are missing from DB (DB reset / manual buy)
         """
         import os
         from src.connectors.polymarket_data import PolymarketDataClient
+        from src.storage.models import PositionRecord
 
         funder = os.environ.get("POLYMARKET_FUNDER_ADDRESS", "")
         if not funder:
             return  # can't reconcile without knowing our wallet
 
         db_positions = self._db.get_open_positions()
-        if not db_positions:
-            return
 
         data_client = PolymarketDataClient()
         try:
             on_chain = await data_client.get_positions(
                 funder, sort_by="CURRENT", limit=200,
             )
-            # Build set of token_ids that are actually held on-chain (size > 0)
-            on_chain_tokens: set[str] = set()
-            for wp in on_chain:
-                if wp.size > 0.001:  # ignore dust
-                    on_chain_tokens.add(wp.asset)
 
+            # Build lookup maps
+            on_chain_by_token: dict[str, Any] = {}
+            for wp in on_chain:
+                if wp.size > 0.001 and not wp.realized:  # ignore dust & realized
+                    on_chain_by_token[wp.asset] = wp
+
+            db_token_ids: set[str] = {pos.token_id for pos in db_positions if pos.token_id}
+
+            # ── 1. Remove DB positions not on-chain anymore ──
             for pos in db_positions:
-                if pos.token_id and pos.token_id not in on_chain_tokens:
+                if pos.token_id and pos.token_id not in on_chain_by_token:
                     log.info(
                         "engine.reconcile_removed",
                         market_id=pos.market_id[:8],
                         token_id=pos.token_id[:12],
                         reason="not_found_on_chain",
                     )
-                    # Archive as externally closed
                     self._db.archive_position(
                         pos=pos,
                         exit_price=pos.current_price,
@@ -1315,6 +1316,49 @@ class TradingEngine:
                         f"no longer held on-chain (manual sell or resolution)",
                         "engine",
                     )
+
+            # ── 2. Import on-chain positions missing from DB ──
+            for token_id, wp in on_chain_by_token.items():
+                if token_id in db_token_ids:
+                    continue  # already tracked
+
+                direction = "BUY_YES" if wp.outcome.lower() == "yes" else "BUY_NO"
+                market_id = wp.condition_id or wp.market_slug or token_id[:16]
+                pnl = round(wp.cash_pnl, 4)
+
+                log.info(
+                    "engine.reconcile_imported",
+                    market_id=market_id[:8],
+                    token_id=token_id[:12],
+                    direction=direction,
+                    size=round(wp.size, 4),
+                    entry_price=round(wp.avg_price, 4),
+                    current_price=round(wp.cur_price, 4),
+                    title=wp.title[:50],
+                )
+
+                self._db.upsert_position(PositionRecord(
+                    market_id=market_id,
+                    token_id=token_id,
+                    direction=direction,
+                    entry_price=wp.avg_price,
+                    size=wp.size,
+                    stake_usd=round(wp.initial_value, 2),
+                    current_price=wp.cur_price,
+                    pnl=pnl,
+                    question=wp.title[:200],
+                ))
+
+                # Subscribe to WebSocket for live price updates
+                self._ws_feed.subscribe(token_id)
+
+                self._db.insert_alert(
+                    "info",
+                    f"Imported on-chain position: {wp.title[:40]} "
+                    f"({direction} {wp.size:.2f} @ ${wp.avg_price:.4f})",
+                    "engine",
+                )
+
         except Exception as e:
             log.warning("engine.reconcile_error", error=str(e))
         finally:

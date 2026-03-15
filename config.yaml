@@ -6,14 +6,14 @@ scanning:
   max_market_age_hours: 720
   batch_size: 100
   preferred_types:
+  - CRYPTO
   - MACRO
-  - ELECTION
-  - CORPORATE
-  - LEGAL
   - TECHNOLOGY
   - SCIENCE
   restricted_types:
   - WEATHER
+  - SPORTS
+  - ELECTION
   filter_min_score: 25
   filter_blocked_types:
   - UNKNOWN
@@ -69,9 +69,9 @@ risk:
   volatility_high_min_mult: 0.4
   volatility_med_min_mult: 0.6
   category_stake_multipliers:
-    MACRO: 1.0
-    CORPORATE: 0.75
-    ELECTION: 1.0
+    CRYPTO: 1.0
+    MACRO: 0.75
+    TECHNOLOGY: 0.75
 drawdown:
   enabled: true
   max_drawdown_pct: 0.2
