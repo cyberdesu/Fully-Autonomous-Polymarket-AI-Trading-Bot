@@ -262,8 +262,9 @@ class TradingEngine:
             log.info("engine.checking_allowance")
             state = await clob.get_collateral_allowance()
             
-            balance = float(state.get("balance", 0))
-            allowance = float(state.get("allowance", 0))
+            # USDC on Polygon has 6 decimals
+            balance = float(state.get("balance", 0)) / 1e6
+            allowance = float(state.get("allowance", 0)) / 1e6
 
             log.info("engine.wallet_status", balance=balance, allowance=allowance)
 

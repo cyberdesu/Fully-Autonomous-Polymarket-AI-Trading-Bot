@@ -610,9 +610,9 @@ def setup_wallet(ctx: click.Context) -> None:
             console.print("[cyan]🔍 Checking wallet balance and allowance...[/cyan]")
             state = await clob.get_collateral_allowance()
             
-            # py-clob-client returns something like {"balance": "...", "allowance": "..."}
-            balance = float(state.get("balance", 0))
-            allowance = float(state.get("allowance", 0))
+            # py-clob-client returns raw units (6 decimals for USDC on Polygon)
+            balance = float(state.get("balance", 0)) / 1e6
+            allowance = float(state.get("allowance", 0)) / 1e6
 
             console.print(f"  [bold]Balance:[/bold]   ${balance:,.2f} USDC")
             console.print(f"  [bold]Allowance:[/bold] ${allowance:,.2f} USDC")
