@@ -1259,6 +1259,67 @@ class TradingEngine:
         except Exception as e:
             log.warning("engine.performance_log_error", error=str(e))
 
+    async def _reconcile_positions(self) -> None:
+        """Sync DB positions against actual on-chain positions.
+
+        Detects positions that were sold manually on Polymarket or resolved
+        externally, and removes them from the DB so the bot doesn't try to
+        double-sell.
+        """
+        import os
+        from src.connectors.polymarket_data import PolymarketDataClient
+
+        funder = os.environ.get("POLYMARKET_FUNDER_ADDRESS", "")
+        if not funder:
+            return  # can't reconcile without knowing our wallet
+
+        db_positions = self._db.get_open_positions()
+        if not db_positions:
+            return
+
+        data_client = PolymarketDataClient()
+        try:
+            on_chain = await data_client.get_positions(
+                funder, sort_by="CURRENT", limit=200,
+            )
+            # Build set of token_ids that are actually held on-chain (size > 0)
+            on_chain_tokens: set[str] = set()
+            for wp in on_chain:
+                if wp.size > 0.001:  # ignore dust
+                    on_chain_tokens.add(wp.asset)
+
+            for pos in db_positions:
+                if pos.token_id and pos.token_id not in on_chain_tokens:
+                    log.info(
+                        "engine.reconcile_removed",
+                        market_id=pos.market_id[:8],
+                        token_id=pos.token_id[:12],
+                        reason="not_found_on_chain",
+                    )
+                    # Archive as externally closed
+                    self._db.archive_position(
+                        pos=pos,
+                        exit_price=pos.current_price,
+                        pnl=round(
+                            (pos.current_price - pos.entry_price) * pos.size
+                            if pos.direction in ("BUY_YES", "BUY")
+                            else (pos.entry_price - pos.current_price) * pos.size,
+                            4,
+                        ),
+                        close_reason="EXTERNAL_SELL",
+                    )
+                    self._db.remove_position(pos.market_id)
+                    self._db.insert_alert(
+                        "info",
+                        f"Position {pos.market_id[:8]} removed: "
+                        f"no longer held on-chain (manual sell or resolution)",
+                        "engine",
+                    )
+        except Exception as e:
+            log.warning("engine.reconcile_error", error=str(e))
+        finally:
+            await data_client.close()
+
     async def _check_positions(self) -> None:
         """Fetch live prices for all open positions and update PNL.
 
@@ -1267,6 +1328,9 @@ class TradingEngine:
         """
         if not self._db:
             return
+
+        # Reconcile DB vs on-chain positions first
+        await self._reconcile_positions()
 
         positions = self._db.get_open_positions()
         if not positions:
