@@ -1380,6 +1380,21 @@ class TradingEngine:
                     question=wp.title[:200],
                 ))
 
+                # Create trade record so dashboard shows it as Live (not Paper)
+                from src.storage.models import TradeRecord
+                self._db.insert_trade(TradeRecord(
+                    id=f"import-{market_id[:8]}-{int(time.time())}",
+                    order_id=f"on-chain-import-{market_id[:8]}",
+                    market_id=market_id,
+                    token_id=token_id,
+                    side=direction,
+                    price=wp.avg_price,
+                    size=wp.size,
+                    stake_usd=round(wp.initial_value, 2),
+                    status="imported",
+                    dry_run=False,
+                ))
+
                 # Subscribe to WebSocket for live price updates
                 self._ws_feed.subscribe(token_id)
 
