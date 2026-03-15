@@ -375,6 +375,9 @@ class TradingEngine:
 
             # Pre-research filter — skip low-quality markets before SerpAPI
             blocked_types = set(self.config.scanning.filter_blocked_types)
+            # Also block restricted_types so they're rejected at scan time
+            if self.config.scanning.restricted_types:
+                blocked_types.update(self.config.scanning.restricted_types)
             preferred_types = self.config.scanning.preferred_types or None
             min_score = self.config.scanning.filter_min_score
             max_per_cycle = self.config.engine.max_markets_per_cycle

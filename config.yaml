@@ -7,13 +7,18 @@ scanning:
   batch_size: 100
   preferred_types:
   - CRYPTO
-  - MACRO
-  - TECHNOLOGY
-  - SCIENCE
   restricted_types:
   - WEATHER
   - SPORTS
   - ELECTION
+  - MACRO
+  - TECHNOLOGY
+  - SCIENCE
+  - CORPORATE
+  - LEGAL
+  - POLITICS
+  - ENTERTAINMENT
+  - HEALTH
   filter_min_score: 25
   filter_blocked_types:
   - UNKNOWN
@@ -70,8 +75,6 @@ risk:
   volatility_med_min_mult: 0.6
   category_stake_multipliers:
     CRYPTO: 1.0
-    MACRO: 0.75
-    TECHNOLOGY: 0.75
 drawdown:
   enabled: true
   max_drawdown_pct: 0.2
