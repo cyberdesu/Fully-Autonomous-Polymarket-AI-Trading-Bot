@@ -484,8 +484,12 @@ class TradingEngine:
     async def _discover_markets(self) -> list[Any]:
         from src.connectors.polymarket_gamma import fetch_active_markets
         try:
+            # If only one preferred type, use Gamma tag filter for efficiency
+            preferred = self.config.scanning.preferred_types or []
+            tag = preferred[0].lower() if len(preferred) == 1 else None
             markets = await fetch_active_markets(
                 min_volume=self.config.risk.min_liquidity, limit=200,
+                category=tag,
             )
             return markets
         except Exception as e:

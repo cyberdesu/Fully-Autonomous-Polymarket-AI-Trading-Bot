@@ -24,6 +24,17 @@ GAMMA_BASE = "https://gamma-api.polymarket.com"
 
 # ── Market type classification keywords ──────────────────────────────
 _TYPE_KEYWORDS: dict[str, list[str]] = {
+    "CRYPTO": [
+        "bitcoin", "btc", "ethereum", "eth", "solana", "sol", "crypto",
+        "blockchain", "defi", "nft", "altcoin", "dogecoin", "doge",
+        "cardano", "ada", "xrp", "ripple", "polkadot", "avalanche",
+        "polygon", "matic", "chainlink", "link", "uniswap", "aave",
+        "litecoin", "ltc", "binance", "bnb", "tron", "near", "aptos",
+        "sui", "arbitrum", "optimism", "base", "stablecoin", "usdt",
+        "token launch", "fdv", "market cap", "backpack", "katana",
+        "hyperliquid", "edgex", "megaeth", "microstrategy",
+        "up or down", "price hit", "above $", "below $",
+    ],
     "MACRO": [
         "cpi", "inflation", "unemployment", "gdp", "interest rate", "fed",
         "fomc", "ecb", "bls", "nonfarm", "payroll", "pce", "treasury",
@@ -44,7 +55,9 @@ _TYPE_KEYWORDS: dict[str, list[str]] = {
     ],
     "SPORTS": [
         "super bowl", "nfl", "nba", "mlb", "world cup", "olympics",
-        "championship", "playoffs", "mvp", "score",
+        "championship", "playoffs", "mvp", "score", "win on",
+        "fútbol", "football", "soccer", "tennis", "boxing", "ufc",
+        "la liga", "premier league", "serie a", "bundesliga",
     ],
 }
 
@@ -66,7 +79,7 @@ class GammaMarket(BaseModel):
     question: str = ""
     description: str = ""
     category: str = ""
-    market_type: str = ""  # MACRO | ELECTION | CORPORATE | WEATHER | SPORTS | UNKNOWN
+    market_type: str = ""  # CRYPTO | MACRO | ELECTION | CORPORATE | WEATHER | SPORTS | UNKNOWN
     end_date: dt.datetime | None = None
     created_at: dt.datetime | None = None  # When the market started trading
     active: bool = True
@@ -200,22 +213,28 @@ async def fetch_active_markets(
     *,
     min_volume: float = 0.0,
     limit: int = 100,
+    category: str | None = None,
 ) -> list[GammaMarket]:
     """Fetch active markets, optionally filtering by minimum volume.
 
     Fetches two batches — one sorted by volume (established markets) and
     one sorted by newest first — then de-duplicates so brand-new markets
     are never missed.
+
+    If *category* is provided (e.g. "crypto"), pass it as the Gamma ``tag``
+    parameter so we only fetch relevant markets from the API.
     """
     client = GammaClient()
     try:
         # Batch 1: highest-volume markets (established liquidity)
         by_volume = await client.list_markets(
             limit=limit, active=True, closed=False, order="volume",
+            category=category,
         )
         # Batch 2: newest markets (fresh opportunities)
         by_newest = await client.list_markets(
             limit=limit, active=True, closed=False, order="startDate",
+            category=category,
         )
         # Merge & deduplicate (preserve order: newest first, then volume)
         seen: set[str] = set()
