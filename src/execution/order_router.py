@@ -125,10 +125,13 @@ class OrderRouter:
                 )
                 metrics.incr("orders.submitted")
 
+                # Use actual market price (not limit price with slippage)
+                # for accurate P&L tracking
+                actual_price = order.metadata.get("market_price", order.price)
                 return OrderResult(
                     order_id=order.order_id,
                     status="submitted",
-                    fill_price=order.price,
+                    fill_price=actual_price,
                     fill_size=order.size,
                     timestamp=ts,
                     raw_response=resp if isinstance(resp, dict) else {"raw": str(resp)},

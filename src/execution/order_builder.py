@@ -132,6 +132,7 @@ def _build_simple_order(
             "direction": position.direction,
             "kelly_fraction": position.kelly_fraction_used,
             "capped_by": position.capped_by,
+            "market_price": implied_price,  # actual market price before slippage
         },
     )
 
