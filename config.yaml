@@ -88,7 +88,7 @@ portfolio:
 execution:
   dry_run: false
   default_order_type: limit
-  slippage_tolerance: 0.01
+  slippage_tolerance: 0.05
   max_retries: 3
 storage:
   db_type: sqlite

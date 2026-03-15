@@ -531,6 +531,22 @@ class TradingEngine:
         # ── Stage 0: Classification ──────────────────────────────────
         self._stage_classify(ctx)
 
+        # ── Early exit: rich classifier says restricted category ──────
+        restricted = set(self.config.scanning.restricted_types or [])
+        preferred = set(self.config.scanning.preferred_types or [])
+        rich_cat = ctx.classification.category.upper() if ctx.classification else ""
+        if rich_cat and restricted and rich_cat in restricted:
+            log.info("engine.restricted_category_skip", market_id=ctx.market_id[:8],
+                     category=rich_cat, msg="Rich classifier category is restricted")
+            ctx.result["skipped"] = f"restricted_category:{rich_cat}"
+            return ctx.result
+        if rich_cat and preferred and rich_cat not in preferred:
+            log.info("engine.non_preferred_category_skip", market_id=ctx.market_id[:8],
+                     category=rich_cat, preferred=list(preferred),
+                     msg="Rich classifier category not in preferred list")
+            ctx.result["skipped"] = f"non_preferred_category:{rich_cat}"
+            return ctx.result
+
         # ── Stage 1: Research ────────────────────────────────────────
         ok = await self._stage_research(ctx)
         if not ok:
@@ -1013,6 +1029,21 @@ class TradingEngine:
                 reason="No token ID available",
             )
             return
+
+        # Fetch live orderbook price to ensure fills
+        try:
+            live_clob = CLOBClient()
+            ob = await live_clob.get_orderbook(token_id)
+            await live_clob.close()
+            if edge_result.direction.startswith("BUY") and ob.best_ask > 0 and ob.best_ask < 1.0:
+                log.info("engine.live_price_update",
+                         market_id=ctx.market_id,
+                         gamma_price=round(implied_price, 4),
+                         best_ask=round(ob.best_ask, 4),
+                         best_bid=round(ob.best_bid, 4))
+                implied_price = ob.best_ask  # Use best ask so limit order crosses spread
+        except Exception as e:
+            log.warning("engine.live_price_fetch_error", error=str(e))
 
         # Smart Entry: Calculate optimal entry price
         execution_strategy = "simple"
