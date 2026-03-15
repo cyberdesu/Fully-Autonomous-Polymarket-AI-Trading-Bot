@@ -27,11 +27,10 @@ import datetime as dt
 from dataclasses import dataclass, field
 from typing import Any
 
-from openai import AsyncOpenAI
-
 from src.config import ForecastingConfig, ResearchConfig
 from src.observability.logger import get_logger
 from src.research.source_fetcher import FetchedSource
+from src.connectors.llm import create_llm_client
 
 log = get_logger(__name__)
 
@@ -308,7 +307,7 @@ class EvidenceExtractor:
 
     def __init__(self, config: ForecastingConfig):
         self._config = config
-        self._llm = AsyncOpenAI()
+        self._llm = create_llm_client(self._config.llm_model)
 
     async def extract(
         self,

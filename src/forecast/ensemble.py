@@ -4,6 +4,7 @@ Supports:
   - GPT-4o (OpenAI)
   - Claude 3.5 Sonnet (Anthropic)
   - Gemini 1.5 Pro (Google)
+  - Any model via OpenRouter (OpenAI-compatible API)
 
 Aggregation methods:
   - trimmed_mean: Remove highest and lowest, average the rest
@@ -28,6 +29,8 @@ from src.research.evidence_extractor import EvidencePackage
 from src.observability.logger import get_logger
 from src.connectors.rate_limiter import rate_limiter
 from src.observability.metrics import cost_tracker
+
+from src.connectors.llm import create_llm_client, get_llm_provider
 
 log = get_logger(__name__)
 
@@ -166,147 +169,87 @@ def _parse_llm_json(raw_text: str) -> dict[str, Any]:
     return json.loads(raw_text.strip())
 
 
-async def _query_openai(model: str, prompt: str, config: ForecastingConfig, timeout_secs: int = 30) -> ModelForecast:
-    """Query an OpenAI model."""
-    import time
-    from openai import AsyncOpenAI
-
-    start = time.monotonic()
-    try:
-        await rate_limiter.get("openai").acquire()
-        client = AsyncOpenAI()
-        resp = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=model,
-                temperature=config.llm_temperature,
-                max_tokens=config.llm_max_tokens,
-                messages=[
-                    {"role": "system", "content": "You are a calibrated probabilistic forecaster. Return only valid JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-            ),
-            timeout=timeout_secs,
-        )
-        raw = resp.choices[0].message.content or "{}"
-        parsed = _parse_llm_json(raw)
-        cost_tracker.record_call(model)
-        return ModelForecast(
-            model_name=model,
-            model_probability=max(0.01, min(0.99, float(parsed.get("model_probability", 0.5)))),
-            confidence_level=parsed.get("confidence_level", "LOW"),
-            reasoning=parsed.get("reasoning", ""),
-            invalidation_triggers=parsed.get("invalidation_triggers", []),
-            key_evidence=parsed.get("key_evidence", []),
-            raw_response=parsed,
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
-    except Exception as e:
-        return ModelForecast(
-            model_name=model, model_probability=0.5, error=str(e),
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
 
 
-async def _query_anthropic(model: str, prompt: str, config: ForecastingConfig, timeout_secs: int = 30) -> ModelForecast:
-    """Query an Anthropic Claude model."""
-    import time
-
-    start = time.monotonic()
-    try:
-        import anthropic
-        await rate_limiter.get("anthropic").acquire()
-        client = anthropic.AsyncAnthropic()
-        resp = await asyncio.wait_for(
-            client.messages.create(
-                model=model,
-                max_tokens=config.llm_max_tokens,
-                temperature=config.llm_temperature,
-                system="You are a calibrated probabilistic forecaster. Return only valid JSON.",
-                messages=[{"role": "user", "content": prompt}],
-            ),
-            timeout=timeout_secs,
-        )
-        raw = resp.content[0].text if resp.content else "{}"
-        parsed = _parse_llm_json(raw)
-        cost_tracker.record_call(model)
-        return ModelForecast(
-            model_name=model,
-            model_probability=max(0.01, min(0.99, float(parsed.get("model_probability", 0.5)))),
-            confidence_level=parsed.get("confidence_level", "LOW"),
-            reasoning=parsed.get("reasoning", ""),
-            invalidation_triggers=parsed.get("invalidation_triggers", []),
-            key_evidence=parsed.get("key_evidence", []),
-            raw_response=parsed,
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
-    except Exception as e:
-        return ModelForecast(
-            model_name=model, model_probability=0.5, error=str(e),
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
 
 
-async def _query_google(model: str, prompt: str, config: ForecastingConfig, timeout_secs: int = 30) -> ModelForecast:
-    """Query a Google Gemini model."""
-    import time
-
-    start = time.monotonic()
-    try:
-        import google.generativeai as genai
-        await rate_limiter.get("google").acquire()
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
-        gmodel = genai.GenerativeModel(model)
-        # Configure per-request to avoid thread-safety issues with global state
-        gmodel._client = genai.GenerativeModel(model)
-        genai.configure(api_key=api_key)
-        resp = await asyncio.wait_for(
-            asyncio.to_thread(
-                gmodel.generate_content,
-                f"You are a calibrated probabilistic forecaster. Return only valid JSON.\n\n{prompt}",
-            ),
-            timeout=timeout_secs,
-        )
-        raw = resp.text or "{}"
-        parsed = _parse_llm_json(raw)
-        cost_tracker.record_call(model)
-        return ModelForecast(
-            model_name=model,
-            model_probability=max(0.01, min(0.99, float(parsed.get("model_probability", 0.5)))),
-            confidence_level=parsed.get("confidence_level", "LOW"),
-            reasoning=parsed.get("reasoning", ""),
-            invalidation_triggers=parsed.get("invalidation_triggers", []),
-            key_evidence=parsed.get("key_evidence", []),
-            raw_response=parsed,
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
-    except Exception as e:
-        return ModelForecast(
-            model_name=model, model_probability=0.5, error=str(e),
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
 
 
-def _route_model(model: str) -> str:
-    """Determine which provider a model name belongs to."""
-    if "claude" in model.lower():
-        return "anthropic"
-    elif "gemini" in model.lower():
-        return "google"
-    else:
-        return "openai"
+
+
 
 
 async def _query_model(
     model: str, prompt: str, config: ForecastingConfig, timeout_secs: int = 30,
 ) -> ModelForecast:
-    """Route a model query to the appropriate provider."""
-    provider = _route_model(model)
-    if provider == "anthropic":
-        return await _query_anthropic(model, prompt, config, timeout_secs)
-    elif provider == "google":
-        return await _query_google(model, prompt, config, timeout_secs)
-    else:
-        return await _query_openai(model, prompt, config, timeout_secs)
+    """Query a model using the appropriate provider client."""
+    import time
+    start = time.monotonic()
+    provider = get_llm_provider(model)
+    
+    try:
+        await rate_limiter.get(provider).acquire()
+        client = create_llm_client(model)
+        
+        if provider in ("openai", "openrouter"):
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    temperature=config.llm_temperature,
+                    max_tokens=config.llm_max_tokens,
+                    messages=[
+                        {"role": "system", "content": "You are a calibrated probabilistic forecaster. Return only valid JSON."},
+                        {"role": "user", "content": prompt},
+                    ],
+                ),
+                timeout=timeout_secs,
+            )
+            raw = resp.choices[0].message.content or "{}"
+            
+        elif provider == "anthropic":
+            resp = await asyncio.wait_for(
+                client.messages.create(
+                    model=model,
+                    max_tokens=config.llm_max_tokens,
+                    temperature=config.llm_temperature,
+                    system="You are a calibrated probabilistic forecaster. Return only valid JSON.",
+                    messages=[{"role": "user", "content": prompt}],
+                ),
+                timeout=timeout_secs,
+            )
+            raw = resp.content[0].text if resp.content else "{}"
+            
+        elif provider == "google":
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.generate_content,
+                    f"You are a calibrated probabilistic forecaster. Return only valid JSON.\n\n{prompt}",
+                ),
+                timeout=timeout_secs,
+            )
+            raw = resp.text or "{}"
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+
+        parsed = _parse_llm_json(raw)
+        cost_tracker.record_call(model)
+        
+        return ModelForecast(
+            model_name=model,
+            model_probability=max(0.01, min(0.99, float(parsed.get("model_probability", 0.5)))),
+            confidence_level=parsed.get("confidence_level", "LOW"),
+            reasoning=parsed.get("reasoning", ""),
+            invalidation_triggers=parsed.get("invalidation_triggers", []),
+            key_evidence=parsed.get("key_evidence", []),
+            raw_response=parsed,
+            latency_ms=(time.monotonic() - start) * 1000,
+        )
+    except Exception as e:
+        log.error("ensemble.query_failed", model=model, provider=provider, error=str(e))
+        return ModelForecast(
+            model_name=model, model_probability=0.5, error=str(e),
+            latency_ms=(time.monotonic() - start) * 1000,
+        )
 
 
 class EnsembleForecaster:
@@ -353,14 +296,15 @@ class EnsembleForecaster:
             )
             # Fallback — try a different provider if the primary fallback failed
             fallback_model = self._ensemble.fallback_model
-            fallback_provider = _route_model(fallback_model)
-            failed_providers = {_route_model(f.model_name) for f in failures}
+            fallback_provider = get_llm_provider(fallback_model)
+            failed_providers = {get_llm_provider(f.model_name) for f in failures}
             if fallback_provider in failed_providers:
                 # Switch fallback to a provider that didn't fail
                 alt_models = {
                     "openai": "gpt-4o",
                     "anthropic": "claude-3-5-sonnet-20241022",
                     "google": "gemini-1.5-pro",
+                    "openrouter": "google/gemini-2.5-pro-preview",
                 }
                 for prov, mdl in alt_models.items():
                     if prov not in failed_providers:

@@ -1553,7 +1553,7 @@ function renderSettingsEnvVars() {
     if (grid.querySelector(':focus')) return;
 
     const groups = {
-        'LLM & AI': ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GOOGLE_API_KEY'],
+        'LLM & AI': ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GOOGLE_API_KEY', 'OPENROUTER_API_KEY'],
         'Polymarket': ['POLYMARKET_API_KEY', 'POLYMARKET_API_SECRET', 'POLYMARKET_API_PASSPHRASE', 'POLYMARKET_PRIVATE_KEY', 'POLYMARKET_CHAIN_ID', 'CLOB_API_KEY', 'PRIVATE_KEY'],
         'Search & Research': ['SERPAPI_KEY', 'TAVILY_API_KEY', 'SERPER_API_KEY'],
         'Notifications': ['DISCORD_WEBHOOK_URL', 'SLACK_WEBHOOK_URL', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'],

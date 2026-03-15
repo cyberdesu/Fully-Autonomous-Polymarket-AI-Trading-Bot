@@ -550,8 +550,8 @@ class TestAdaptiveWeights:
         from src.analytics.adaptive_weights import AdaptiveModelWeighter
         cfg = self._make_config()
         w = AdaptiveModelWeighter(cfg)
-        assert len(w._models) == 3
-        assert len(w._default_weights) == 3
+        assert len(w._models) == 4
+        assert len(w._default_weights) == 4
 
     def test_get_weights_empty_db(self):
         from src.analytics.adaptive_weights import AdaptiveModelWeighter

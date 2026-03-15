@@ -5994,6 +5994,7 @@ def api_admin() -> Any:
             "OPENAI_API_KEY": bool(os.environ.get("OPENAI_API_KEY")),
             "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
+            "OPENROUTER_API_KEY": bool(os.environ.get("OPENROUTER_API_KEY")),
             "POLYMARKET_API_KEY": bool(os.environ.get("POLYMARKET_API_KEY")),
             "POLYMARKET_SECRET": bool(os.environ.get("POLYMARKET_SECRET")),
             "POLYMARKET_PASSPHRASE": bool(os.environ.get("POLYMARKET_PASSPHRASE")),
@@ -6025,8 +6026,8 @@ def api_admin() -> Any:
         api_errors = counters.get("api.errors", 0)
 
         # Rough cost estimates (per 1M tokens)
-        cost_per_1m_input = {"gpt-4o": 2.50, "claude-3-5-sonnet-20241022": 3.00, "gemini-1.5-pro": 1.25}
-        cost_per_1m_output = {"gpt-4o": 10.00, "claude-3-5-sonnet-20241022": 15.00, "gemini-1.5-pro": 5.00}
+        cost_per_1m_input = {"gpt-4o": 2.50, "claude-3-5-sonnet-20241022": 3.00, "gemini-1.5-pro": 1.25, "google/gemini-2.5-pro-preview": 1.25}
+        cost_per_1m_output = {"gpt-4o": 10.00, "claude-3-5-sonnet-20241022": 15.00, "gemini-1.5-pro": 5.00, "google/gemini-2.5-pro-preview": 5.00}
         model = cfg.forecasting.llm_model
         input_cost_rate = cost_per_1m_input.get(model, 2.50)
         output_cost_rate = cost_per_1m_output.get(model, 10.00)
@@ -6795,7 +6796,7 @@ _ENV_FILE = _PROJECT_ROOT / ".env"
 
 # Keys that are safe to manage from the dashboard
 _MANAGED_ENV_KEYS = [
-    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",
+    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY",
     "POLYMARKET_API_KEY", "POLYMARKET_API_SECRET", "POLYMARKET_API_PASSPHRASE",
     "POLYMARKET_PRIVATE_KEY", "POLYMARKET_CHAIN_ID",
     "CLOB_API_KEY", "PRIVATE_KEY",

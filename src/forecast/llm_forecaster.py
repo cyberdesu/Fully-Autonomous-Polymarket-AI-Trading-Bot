@@ -20,6 +20,7 @@ from src.forecast.feature_builder import MarketFeatures
 from src.research.evidence_extractor import EvidencePackage
 from src.observability.logger import get_logger
 from src.connectors.rate_limiter import rate_limiter
+from src.connectors.llm import create_llm_client
 
 log = get_logger(__name__)
 
@@ -142,7 +143,7 @@ class LLMForecaster:
 
     def __init__(self, config: ForecastingConfig):
         self._config = config
-        self._llm = AsyncOpenAI()
+        self._llm = create_llm_client(self._config.llm_model)
 
     async def forecast(
         self,

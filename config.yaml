@@ -29,7 +29,7 @@ research:
   stale_days_penalty_threshold: 7
   stale_days_heavy_penalty: 30
 forecasting:
-  llm_model: gpt-4o
+  llm_model: openai/gpt-4o
   llm_temperature: 0.2
   llm_max_tokens: 4096
   low_evidence_penalty: 0.15
@@ -38,12 +38,12 @@ forecasting:
 ensemble:
   enabled: true
   models:
-  - gpt-4o
-  - claude-3-5-sonnet-20241022
-  - gemini-1.5-pro
+  - google/gemini-2.5-pro-preview
+  - anthropic/claude-3.5-sonnet
+  - openai/gpt-4o
   aggregation: trimmed_mean
   min_models_required: 1
-  fallback_model: gpt-4o
+  fallback_model: google/gemini-2.5-pro-preview
   timeout_per_model_secs: 30
 risk:
   max_stake_per_market: 50.0
@@ -55,7 +55,7 @@ risk:
   max_spread: 0.06
   kelly_fraction: 0.25
   max_bankroll_fraction: 0.05
-  bankroll: 5000.0
+  bankroll: 14.68
   transaction_fee_pct: 0.02
   exit_fee_pct: 0.02
   gas_cost_usd: 0.01
@@ -65,7 +65,7 @@ risk:
   max_holding_hours: 240
   min_stake_usd: 1.0
   volatility_high_threshold: 0.15
-  volatility_med_threshold: 0.10
+  volatility_med_threshold: 0.1
   volatility_high_min_mult: 0.4
   volatility_med_min_mult: 0.6
   category_stake_multipliers:
@@ -122,19 +122,11 @@ wallet_scanner:
   whale_convergence_min_edge: 0.02
 scanner:
   apiPool:
-    strategy: least-loaded          # round-robin | least-loaded | weighted-random
-    # Add custom proxy mirrors below to multiply throughput.
-    # Each endpoint gets its own independent rate limiter.
-    # Built-in: data-api-primary (60 RPM) + gamma-api-primary (60 RPM) = 120 RPM base.
-    # Example:  add 2 proxies → 60 × 4 = 240 RPM.
+    strategy: least-loaded
     endpoints: []
-    # - name: my-proxy-1
-    #   base_url: https://my-polymarket-proxy.example.com
-    #   rpm: 60
-    #   weight: 1.0
 engine:
   scan_interval_minutes: 10
   max_markets_per_cycle: 10
   auto_start: true
-  paper_mode: true
+  paper_mode: false
   cycle_interval_secs: 180

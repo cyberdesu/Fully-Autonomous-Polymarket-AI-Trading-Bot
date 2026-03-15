@@ -28,6 +28,7 @@ DEFAULT_LIMITS: dict[str, BucketConfig] = {
     "openai": BucketConfig(tokens_per_second=3.0, max_burst=5, name="OpenAI"),
     "anthropic": BucketConfig(tokens_per_second=2.0, max_burst=4, name="Anthropic"),
     "google": BucketConfig(tokens_per_second=2.0, max_burst=4, name="Google AI"),
+    "openrouter": BucketConfig(tokens_per_second=3.0, max_burst=5, name="OpenRouter"),
     "serpapi": BucketConfig(tokens_per_second=1.0, max_burst=3, name="SerpAPI"),
     "bing": BucketConfig(tokens_per_second=3.0, max_burst=5, name="Bing Search"),
     "tavily": BucketConfig(tokens_per_second=2.0, max_burst=4, name="Tavily"),

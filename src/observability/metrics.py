@@ -115,6 +115,7 @@ _DEFAULT_COSTS: dict[str, float] = {
     "gpt-4o-mini": 0.0005,
     "claude-3-5-sonnet-20241022": 0.005,
     "gemini-1.5-pro": 0.003,
+    "google/gemini-2.5-pro-preview": 0.003,
     "serpapi": 0.005,                    # $50/5K searches
     "bing": 0.003,
     "tavily": 0.005,
