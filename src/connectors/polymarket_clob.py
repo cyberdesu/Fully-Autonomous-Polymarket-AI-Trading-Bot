@@ -130,15 +130,17 @@ class CLOBClient:
         # SECURITY: Never log the private key
         log.info("clob.init_signing_client", chain_id=chain_id, api_key=api_key[:8] + "***")
 
+        from py_clob_client.clob_types import ApiCreds
+
         self._signing_client = ClobClient(
             host=self._base,
             key=private_key,
             chain_id=chain_id,
-            creds={
-                "apiKey": api_key,
-                "secret": api_secret,
-                "passphrase": api_passphrase,
-            },
+            creds=ApiCreds(
+                api_key=api_key,
+                api_secret=api_secret,
+                api_passphrase=api_passphrase,
+            ),
         )
         return self._signing_client
 

@@ -90,7 +90,8 @@ class OrderRouter:
 
                 # Slippage guard: reject if price deviates beyond tolerance
                 if order.order_type == "limit":
-                    resp = signing.create_and_post_order(
+                    resp = await asyncio.to_thread(
+                        signing.create_and_post_order,
                         OrderArgs(
                             token_id=order.token_id,
                             price=order.price,
@@ -106,7 +107,8 @@ class OrderRouter:
                         if order.side == "BUY"
                         else max(order.price * (1 - slippage), 0.01)
                     )
-                    resp = signing.create_and_post_order(
+                    resp = await asyncio.to_thread(
+                        signing.create_and_post_order,
                         OrderArgs(
                             token_id=order.token_id,
                             price=aggressive_price,

@@ -79,6 +79,12 @@ docker-logs: ## Follow docker compose logs
 backup: ## Backup the SQLite database
 	$(PYTHON) -c "from src.storage.backup import backup_database; print(backup_database())"
 
+reset-db: ## Wipe the trading database and start fresh
+	@echo "⚠️ Warning: This will delete all trade history and bot state."
+	@read -p "Are you sure? [y/N] " ans && [ $${ans:-N} = y ]
+	rm -f data/bot.db data/bot.db-shm data/bot.db-wal
+	@echo "✅ Database reset. Start the bot again to initialize a fresh state."
+
 # ─── Clean ──────────────────────────────────────────────────────────
 
 clean: ## Remove build artifacts and caches
