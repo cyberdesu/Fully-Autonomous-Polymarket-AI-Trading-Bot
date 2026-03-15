@@ -137,6 +137,9 @@ def _maintenance_worker() -> None:
                     _ensure_tables(conn)
                     cfg = _get_config()
                     bankroll = cfg.risk.bankroll
+                    onchain = _fetch_onchain_balance()
+                    if onchain is not None and onchain >= 0:
+                        bankroll = onchain
 
                     positions = conn.execute(
                         "SELECT pnl, stake_usd FROM positions"
@@ -222,6 +225,27 @@ def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(_db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _fetch_onchain_balance() -> float | None:
+    """Fetch real USDC balance from Polymarket CLOB. Returns None on failure."""
+    try:
+        from src.connectors.polymarket_clob import CLOBClient
+        clob = CLOBClient()
+
+        def _inner():
+            loop = asyncio.new_event_loop()
+            try:
+                state = loop.run_until_complete(clob.get_collateral_allowance())
+                return float(state.get("balance", 0)) / 1e6
+            finally:
+                loop.close()
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(_inner).result(timeout=10)
+    except Exception:
+        return None
 
 
 def _ensure_tables(conn: sqlite3.Connection) -> None:
@@ -503,8 +527,13 @@ def api_portfolio() -> Any:
     conn = _get_conn()
     _ensure_tables(conn)
     try:
-        # Bankroll from config
+        # Fetch real on-chain USDC balance; fall back to config bankroll
         bankroll = cfg.risk.bankroll
+        onchain_balance = _fetch_onchain_balance()
+
+        # Use on-chain balance as source of truth when available
+        if onchain_balance is not None and onchain_balance >= 0:
+            bankroll = onchain_balance
 
         # Open positions
         positions = conn.execute("SELECT * FROM positions").fetchall()
@@ -567,8 +596,10 @@ def api_portfolio() -> Any:
         avg_edge = sum(edge_values) / len(edge_values) if edge_values else 0.0
 
         return jsonify({
-            "bankroll": bankroll,
-            "available_capital": bankroll - total_invested,
+            "bankroll": round(bankroll, 2),
+            "config_bankroll": round(cfg.risk.bankroll, 2),
+            "onchain_balance": round(onchain_balance, 2) if onchain_balance is not None else None,
+            "available_capital": round(bankroll - total_invested, 2),
             "total_invested": total_invested,
             "unrealized_pnl": unrealized_pnl,
             "realized_pnl": realized_pnl,
@@ -1553,6 +1584,10 @@ def api_metrics() -> Any:
 @app.route("/api/drawdown")
 def api_drawdown() -> Any:
     cfg = _get_config()
+    fallback_bankroll = cfg.risk.bankroll
+    onchain = _fetch_onchain_balance()
+    if onchain is not None and onchain >= 0:
+        fallback_bankroll = onchain
     conn = _get_conn()
     _ensure_tables(conn)
     try:
@@ -1562,8 +1597,8 @@ def api_drawdown() -> Any:
         if row:
             dd = json.loads(row["value"])
             return jsonify({
-                "peak_equity": dd.get("peak_equity", cfg.risk.bankroll),
-                "current_equity": dd.get("current_equity", cfg.risk.bankroll),
+                "peak_equity": dd.get("peak_equity", fallback_bankroll),
+                "current_equity": dd.get("current_equity", fallback_bankroll),
                 "drawdown_pct": dd.get("drawdown_pct", 0.0),
                 "heat_level": dd.get("heat_level", 0),
                 "kelly_multiplier": dd.get("kelly_multiplier", 1.0),
@@ -1579,8 +1614,8 @@ def api_drawdown() -> Any:
         conn.close()
     # Fallback when engine hasn't started yet
     return jsonify({
-        "peak_equity": cfg.risk.bankroll,
-        "current_equity": cfg.risk.bankroll,
+        "peak_equity": fallback_bankroll,
+        "current_equity": fallback_bankroll,
         "drawdown_pct": 0.0,
         "heat_level": 0,
         "kelly_multiplier": 1.0,
@@ -6540,6 +6575,9 @@ def api_equity_curve() -> Any:
     try:
         cfg = _get_config()
         bankroll = cfg.risk.bankroll
+        onchain = _fetch_onchain_balance()
+        if onchain is not None and onchain >= 0:
+            bankroll = onchain
 
         # ── Try realized P&L from performance_log first ──────────
         tracker = PerformanceTracker(bankroll=bankroll)

@@ -272,7 +272,19 @@ class TradingEngine:
             else:
                 allowance = float(state.get("allowance", 0)) / 1e6
 
-            log.info("engine.wallet_status", balance=balance, allowance=allowance)
+            log.info("engine.wallet_status", balance=balance, allowance=allowance,
+                     config_bankroll=self.config.risk.bankroll)
+
+            # Update bankroll to real on-chain balance
+            if balance > 0:
+                old_bankroll = self.config.risk.bankroll
+                self.config.risk.bankroll = balance
+                self.drawdown.state.peak_equity = max(self.drawdown.state.peak_equity, balance)
+                self.drawdown.state.current_equity = balance
+                self.portfolio.bankroll = balance
+                log.info("engine.bankroll_synced",
+                         old=old_bankroll, new=balance,
+                         msg="Bankroll updated to on-chain USDC balance")
 
             if balance == 0:
                 log.warning("engine.zero_balance", msg="USDC balance is 0. Bot cannot trade.")

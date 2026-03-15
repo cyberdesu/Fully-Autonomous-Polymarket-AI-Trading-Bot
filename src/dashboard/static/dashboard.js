@@ -412,7 +412,8 @@ async function updatePortfolio() {
     const d = await apiFetch('/api/portfolio');
     if (!d) return;
     $('#bankroll').textContent   = fmtD(d.bankroll);
-    $('#available-capital').textContent = `Available: ${fmtD(d.available_capital)}`;
+    const balSource = d.onchain_balance != null ? 'On-chain' : 'Config';
+    $('#available-capital').textContent = `Available: ${fmtD(d.available_capital)} (${balSource})`;
 
     const pnlEl = $('#total-pnl');
     pnlEl.textContent = fmtD(d.total_pnl);
