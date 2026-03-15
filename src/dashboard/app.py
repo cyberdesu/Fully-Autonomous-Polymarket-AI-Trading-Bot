@@ -1675,6 +1675,7 @@ def api_engine() -> Any:
                 "engine_embedded": True,
                 "engine_error": _engine_error,
                 "copy_trading_enabled": cfg.copy_trading.enabled,
+                "copy_trading_simulate": cfg.copy_trading.simulate_only,
             })
         except Exception:
             pass
@@ -1701,6 +1702,7 @@ def api_engine() -> Any:
                 "engine_embedded": True,
                 "engine_error": _engine_error,
                 "copy_trading_enabled": cfg.copy_trading.enabled,
+                "copy_trading_simulate": cfg.copy_trading.simulate_only,
             })
     except Exception:
         pass
@@ -1718,6 +1720,7 @@ def api_engine() -> Any:
         "engine_embedded": True,
         "engine_error": _engine_error,
         "copy_trading_enabled": cfg.copy_trading.enabled,
+        "copy_trading_simulate": cfg.copy_trading.simulate_only,
     })
 
 
@@ -6629,6 +6632,65 @@ def api_equity_curve() -> Any:
         conn.close()
 
 
+# ─── API: Copy Trade Log ──────────────────────────────────────────
+
+@app.route("/api/copy-trades")
+def api_copy_trades() -> Any:
+    """Return copy trade history with simulation stats."""
+    cfg = _get_config()
+    conn = _get_conn()
+    _ensure_tables(conn)
+    try:
+        rows = conn.execute("""
+            SELECT * FROM copy_trade_log
+            ORDER BY created_at DESC
+            LIMIT 100
+        """).fetchall()
+
+        trades = []
+        for r in rows:
+            rd = dict(r)
+            rd["is_simulated"] = bool(rd.get("is_simulated", 1))
+            trades.append(rd)
+
+        # Summary stats
+        total_entries = sum(1 for t in trades if t.get("action") == "COPY_ENTRY")
+        total_exits = sum(1 for t in trades if t.get("action") == "COPY_EXIT")
+        sim_count = sum(1 for t in trades if t.get("is_simulated"))
+        live_count = sum(1 for t in trades if not t.get("is_simulated"))
+        total_pnl = sum(float(t.get("pnl", 0)) for t in trades if t.get("action") == "COPY_EXIT")
+        total_staked = sum(float(t.get("stake_usd", 0)) for t in trades if t.get("action") == "COPY_ENTRY")
+
+        # Open copy positions (still held)
+        open_copy = conn.execute("""
+            SELECT market_id, question, entry_price, current_price, size,
+                   stake_usd, pnl, copy_source, market_type, opened_at
+            FROM positions
+            WHERE copy_source != '' AND copy_source IS NOT NULL
+        """).fetchall()
+        open_positions = [dict(p) for p in open_copy]
+
+        return jsonify({
+            "trades": trades,
+            "open_positions": open_positions,
+            "stats": {
+                "total_entries": total_entries,
+                "total_exits": total_exits,
+                "simulated": sim_count,
+                "live": live_count,
+                "total_pnl": round(total_pnl, 4),
+                "total_staked": round(total_staked, 2),
+                "roi_pct": round((total_pnl / total_staked * 100) if total_staked > 0 else 0, 2),
+                "simulate_only": cfg.copy_trading.simulate_only,
+            },
+        })
+    except Exception as exc:
+        return jsonify({"trades": [], "open_positions": [], "stats": {},
+                        "error": str(exc)}), 200
+    finally:
+        conn.close()
+
+
 # ─── API: Watchlist ────────────────────────────────────────────────
 
 @app.route("/api/watchlist")
@@ -6986,6 +7048,7 @@ def api_flags_toggle() -> Any:
         "fetch_full_content": ("research", "fetch_full_content"),
         "track_leaderboard": ("wallet_scanner", "track_leaderboard"),
         "copy_trading_enabled": ("copy_trading", "enabled"),
+        "copy_trading_simulate_only": ("copy_trading", "simulate_only"),
     }
 
     if flag not in FLAG_MAP:

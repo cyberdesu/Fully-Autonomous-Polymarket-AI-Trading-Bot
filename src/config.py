@@ -279,6 +279,7 @@ class WalletScannerConfig(BaseModel):
 class CopyTradingConfig(BaseModel):
     """Copy trading — auto-mirror whale positions."""
     enabled: bool = False
+    simulate_only: bool = True   # paper-trade copy trades even when engine is live
     min_conviction_score: float = 30.0
     max_stake_per_copy: float = 5.0
     max_portfolio_pct: float = 0.10  # max 10% of bankroll in copy trades

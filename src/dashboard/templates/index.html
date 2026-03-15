@@ -93,6 +93,10 @@
             <span class="tab-icon">🐋</span>
             <span class="tab-label">Whale Tracker</span>
         </button>
+        <button class="tab-btn" data-tab="copytrades" onclick="switchTab('copytrades')">
+            <span class="tab-icon">📋</span>
+            <span class="tab-label">Copy Trades</span>
+        </button>
         <button class="tab-btn" data-tab="decisions" onclick="switchTab('decisions')">
             <span class="tab-icon">🧠</span>
             <span class="tab-label">Decision Intel</span>
@@ -948,6 +952,70 @@
 
         </section>
 
+    </div>
+    <!-- ════════════════════════════════════════════════════════ -->
+    <!-- TAB: COPY TRADES                                        -->
+    <!-- ════════════════════════════════════════════════════════ -->
+    <div class="tab-content" id="tab-copytrades" data-tab="copytrades">
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Copy Trading Dashboard</h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span id="ct-mode-badge" class="badge badge-paper">SIMULATE</span>
+                    <button class="btn btn-sm" onclick="refreshCopyTrades()">Refresh</button>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-4" style="margin-bottom:16px;">
+                <div class="card accent-blue">
+                    <div class="card-label">Total Entries</div>
+                    <div class="card-value" id="ct-total-entries">0</div>
+                    <div class="card-sub" id="ct-entries-sub">Simulated: 0 | Live: 0</div>
+                </div>
+                <div class="card accent-green">
+                    <div class="card-label">Copy P&L</div>
+                    <div class="card-value" id="ct-total-pnl">$0.00</div>
+                    <div class="card-sub" id="ct-roi">ROI: 0%</div>
+                </div>
+                <div class="card accent-purple">
+                    <div class="card-label">Open Copy Positions</div>
+                    <div class="card-value" id="ct-open-count">0</div>
+                    <div class="card-sub" id="ct-staked">Staked: $0.00</div>
+                </div>
+                <div class="card accent-orange">
+                    <div class="card-label">Total Exits</div>
+                    <div class="card-value" id="ct-total-exits">0</div>
+                    <div class="card-sub" id="ct-exits-sub">Closed trades</div>
+                </div>
+            </div>
+
+            <!-- Open Copy Positions Table -->
+            <h3 style="color:#e2e4ed;margin:16px 0 8px;">Open Copy Positions</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr>
+                        <th>Market</th><th>Source</th><th>Type</th>
+                        <th>Entry</th><th>Current</th><th>Size</th>
+                        <th>Stake</th><th>P&L</th><th>Opened</th>
+                    </tr></thead>
+                    <tbody id="ct-open-positions-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Copy Trade Log Table -->
+            <h3 style="color:#e2e4ed;margin:16px 0 8px;">Copy Trade Log</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr>
+                        <th>Time</th><th>Action</th><th>Mode</th>
+                        <th>Whale</th><th>Market</th><th>Direction</th>
+                        <th>Price</th><th>Stake</th><th>P&L</th><th>Status</th>
+                    </tr></thead>
+                    <tbody id="ct-log-body"></tbody>
+                </table>
+            </div>
+        </section>
     </div>
     <!-- ════════════════════════════════════════════════════════ -->
     <!-- TAB: DECISION INTELLIGENCE                              -->

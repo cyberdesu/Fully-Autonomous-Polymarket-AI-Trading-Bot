@@ -1971,6 +1971,8 @@ class TradingEngine:
         from src.execution.order_router import OrderRouter
 
         limit_price = round(price * (1 + self.config.execution.slippage_tolerance), 4)
+        # Copy trades can be forced to simulate even when main engine is live
+        is_dry = self.config.execution.dry_run or cfg.simulate_only
         order = OrderSpec(
             order_id=f"copy-{delta.market_slug[:8]}-{int(time.time())}",
             market_id=market.id,
@@ -1981,7 +1983,7 @@ class TradingEngine:
             size=size,
             stake_usd=cfg.max_stake_per_copy,
             ttl_secs=self.config.execution.limit_order_ttl_secs,
-            dry_run=self.config.execution.dry_run,
+            dry_run=is_dry,
             metadata={"copy_source": delta.wallet_name, "market_price": price},
         )
 
@@ -2016,14 +2018,14 @@ class TradingEngine:
                     INSERT INTO copy_trade_log
                         (market_slug, market_id, token_id, whale_name,
                          whale_address, action, outcome, direction,
-                         stake_usd, price, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         stake_usd, price, status, is_simulated, pnl, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     delta.market_slug, market.id, token_id,
                     delta.wallet_name, delta.wallet_address,
                     "COPY_ENTRY", delta.outcome, direction,
                     cfg.max_stake_per_copy, result.fill_price,
-                    result.status,
+                    result.status, 1 if is_dry else 0, 0.0,
                     _dt.datetime.now(_dt.timezone.utc).isoformat(),
                 ))
                 self._db.conn.commit()
@@ -2065,6 +2067,8 @@ class TradingEngine:
                 pass
 
             limit_price = round(sell_price * (1 - self.config.execution.slippage_tolerance), 4)
+            cfg = self.config.copy_trading
+            is_dry = self.config.execution.dry_run or cfg.simulate_only
             sell_order = OrderSpec(
                 order_id=f"copy-exit-{pos.market_id[:8]}-{int(time.time())}",
                 market_id=pos.market_id,
@@ -2075,7 +2079,7 @@ class TradingEngine:
                 size=pos.size,
                 stake_usd=pos.stake_usd,
                 ttl_secs=self.config.execution.limit_order_ttl_secs,
-                dry_run=self.config.execution.dry_run,
+                dry_run=is_dry,
                 metadata={"copy_source": pos.copy_source, "market_price": sell_price},
             )
             clob = CLOBClient()
@@ -2083,12 +2087,29 @@ class TradingEngine:
             try:
                 result = await router.submit_order(sell_order)
                 if result.status != "failed":
+                    import datetime as _dt
                     pnl = round((sell_price - pos.entry_price) * pos.size, 4)
                     self._db.archive_position(
                         pos=pos, exit_price=sell_price,
                         pnl=pnl, close_reason="WHALE_EXIT",
                     )
                     self._db.remove_position(pos.market_id)
+                    # Log exit to copy_trade_log
+                    self._db.conn.execute("""
+                        INSERT INTO copy_trade_log
+                            (market_slug, market_id, token_id, whale_name,
+                             whale_address, action, outcome, direction,
+                             stake_usd, price, status, is_simulated, pnl, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        delta.market_slug, pos.market_id, pos.token_id,
+                        delta.wallet_name, delta.wallet_address if hasattr(delta, 'wallet_address') else '',
+                        "COPY_EXIT", delta.outcome if hasattr(delta, 'outcome') else '',
+                        "SELL", pos.stake_usd, sell_price,
+                        result.status, 1 if is_dry else 0, pnl,
+                        _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                    ))
+                    self._db.conn.commit()
                     self._db.insert_alert(
                         "info",
                         f"📋 COPY EXIT: {delta.wallet_name} exited → "

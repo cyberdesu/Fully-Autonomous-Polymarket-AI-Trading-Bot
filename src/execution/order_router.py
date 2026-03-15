@@ -71,10 +71,12 @@ class OrderRouter:
                 stake=order.stake_usd,
             )
             metrics.incr("orders.simulated")
+            # Use market_price (pre-slippage) for realistic simulation fill
+            sim_fill = order.metadata.get("market_price", order.price) if order.metadata else order.price
             return OrderResult(
                 order_id=order.order_id,
                 status="simulated",
-                fill_price=order.price,
+                fill_price=sim_fill,
                 fill_size=order.size,
                 timestamp=ts,
             )

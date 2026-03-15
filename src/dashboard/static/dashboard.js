@@ -47,6 +47,7 @@ const TAB_UPDATERS = {
     trading:  ['updatePositions', 'updateCandidates', 'updateForecasts', 'updateTrades'],
     analytics: ['updateAnalytics'],
     whales:   ['updateWhaleTracker'],
+    copytrades: ['refreshCopyTrades'],
     decisions: ['updateDecisionLog'],
     strategies: ['updateStrategiesTab'],
     journal:  ['updateVaR', 'updateWatchlist', 'updateJournal', 'updateEquitySnapshots'],
@@ -1149,6 +1150,92 @@ function updateCopyTradingBadge(enabled) {
     } else {
         badge.textContent = 'COPY: OFF';
         badge.className = 'badge badge-paper';
+    }
+}
+
+// ─── Copy Trades Tab ────────────────────────────────────────────
+async function refreshCopyTrades() {
+    const d = await apiFetch('/api/copy-trades');
+    if (!d) return;
+
+    const s = d.stats || {};
+
+    // Mode badge
+    const modeBadge = document.getElementById('ct-mode-badge');
+    if (modeBadge) {
+        if (s.simulate_only) {
+            modeBadge.textContent = 'SIMULATE';
+            modeBadge.className = 'badge badge-paper';
+        } else {
+            modeBadge.textContent = 'LIVE';
+            modeBadge.className = 'badge badge-live';
+        }
+    }
+
+    // KPI cards
+    safeText($('#ct-total-entries'), String(s.total_entries || 0));
+    safeText($('#ct-entries-sub'), `Simulated: ${s.simulated || 0} | Live: ${s.live || 0}`);
+
+    const pnlEl = $('#ct-total-pnl');
+    if (pnlEl) {
+        pnlEl.textContent = fmtD(s.total_pnl || 0);
+        pnlEl.className = `card-value ${pnlClass(s.total_pnl || 0)}`;
+    }
+    safeText($('#ct-roi'), `ROI: ${fmtP(s.roi_pct || 0)}%`);
+
+    safeText($('#ct-open-count'), String((d.open_positions || []).length));
+    safeText($('#ct-staked'), `Staked: ${fmtD(s.total_staked || 0)}`);
+    safeText($('#ct-total-exits'), String(s.total_exits || 0));
+
+    // Open copy positions table
+    const openBody = document.getElementById('ct-open-positions-body');
+    if (openBody) {
+        if (!d.open_positions || !d.open_positions.length) {
+            safeHTML(openBody, '<tr><td colspan="9" style="text-align:center;color:#5a5e72;">No open copy positions</td></tr>');
+        } else {
+            safeHTML(openBody, d.open_positions.map(p => {
+                const pnl = p.pnl || 0;
+                return `<tr>
+                    <td title="${p.question || ''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(p.question || p.market_id || '').substring(0, 40)}</td>
+                    <td>${p.copy_source || ''}</td>
+                    <td>${p.market_type || ''}</td>
+                    <td>${fmtP((p.entry_price || 0) * 100)}c</td>
+                    <td>${fmtP((p.current_price || 0) * 100)}c</td>
+                    <td>${fmt(p.size || 0, 2)}</td>
+                    <td>${fmtD(p.stake_usd || 0)}</td>
+                    <td class="${pnlClass(pnl)}">${fmtD(pnl)}</td>
+                    <td>${shortDate(p.opened_at)}</td>
+                </tr>`;
+            }).join(''));
+        }
+    }
+
+    // Copy trade log table
+    const logBody = document.getElementById('ct-log-body');
+    if (logBody) {
+        if (!d.trades || !d.trades.length) {
+            safeHTML(logBody, '<tr><td colspan="10" style="text-align:center;color:#5a5e72;">No copy trades yet</td></tr>');
+        } else {
+            safeHTML(logBody, d.trades.map(t => {
+                const isSim = t.is_simulated;
+                const actionClass = t.action === 'COPY_ENTRY' ? 'pnl-positive' : 'pnl-negative';
+                const modeLabel = isSim ? '<span class="pill" style="background:rgba(255,159,67,0.15);color:#ff9f43;">SIM</span>'
+                                        : '<span class="pill" style="background:rgba(0,214,143,0.15);color:#00d68f;">LIVE</span>';
+                const pnl = t.pnl || 0;
+                return `<tr>
+                    <td>${shortDate(t.created_at)}</td>
+                    <td class="${actionClass}">${t.action || ''}</td>
+                    <td>${modeLabel}</td>
+                    <td>${t.whale_name || ''}</td>
+                    <td title="${t.market_slug || ''}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(t.market_slug || '').substring(0, 30)}</td>
+                    <td>${t.direction || ''}</td>
+                    <td>${fmtP((t.price || 0) * 100)}c</td>
+                    <td>${fmtD(t.stake_usd || 0)}</td>
+                    <td class="${pnlClass(pnl)}">${t.action === 'COPY_EXIT' ? fmtD(pnl) : '—'}</td>
+                    <td>${t.status || ''}</td>
+                </tr>`;
+            }).join(''));
+        }
     }
 }
 

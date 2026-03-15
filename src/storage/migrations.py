@@ -751,6 +751,12 @@ _MIGRATIONS: dict[int, list[str]] = {
         """CREATE INDEX IF NOT EXISTS idx_copy_log_market ON copy_trade_log(market_slug);""",
         """CREATE INDEX IF NOT EXISTS idx_copy_log_created ON copy_trade_log(created_at);""",
     ],
+
+    # ── Migration 12: Copy Trading Simulation columns ─────────────
+    12: [
+        """ALTER TABLE copy_trade_log ADD COLUMN is_simulated INTEGER DEFAULT 1;""",
+        """ALTER TABLE copy_trade_log ADD COLUMN pnl REAL DEFAULT 0;""",
+    ],
 }
 
 
