@@ -947,7 +947,7 @@ class TradingEngine:
             regime_multiplier=regime_kelly * regime_size,
             category_multiplier=cat_mult,
         )
-        if ctx.position.stake_usd < 1.0:
+        if ctx.position.stake_usd < self.config.risk.min_stake_usd:
             log.info("engine.stake_too_small", market_id=ctx.market_id,
                      stake=ctx.position.stake_usd)
             self._log_candidate(

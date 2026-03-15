@@ -120,6 +120,10 @@ class CLOBClient:
         api_passphrase = os.environ.get("POLYMARKET_API_PASSPHRASE", "")
         private_key = os.environ.get("POLYMARKET_PRIVATE_KEY", "")
         chain_id = int(os.environ.get("POLYMARKET_CHAIN_ID", "137"))
+        funder = os.environ.get("POLYMARKET_FUNDER_ADDRESS", None)
+        sig_type = os.environ.get("POLYMARKET_SIGNATURE_TYPE", None)
+        if sig_type is not None:
+            sig_type = int(sig_type)
 
         if not all([api_key, api_secret, api_passphrase, private_key]):
             raise RuntimeError(
@@ -128,7 +132,13 @@ class CLOBClient:
             )
 
         # SECURITY: Never log the private key
-        log.info("clob.init_signing_client", chain_id=chain_id, api_key=api_key[:8] + "***")
+        log.info(
+            "clob.init_signing_client", 
+            chain_id=chain_id, 
+            api_key=api_key[:8] + "***",
+            funder=funder,
+            sig_type=sig_type
+        )
 
         from py_clob_client.clob_types import ApiCreds
 
@@ -136,6 +146,8 @@ class CLOBClient:
             host=self._base,
             key=private_key,
             chain_id=chain_id,
+            signature_type=sig_type,
+            funder=funder,
             creds=ApiCreds(
                 api_key=api_key,
                 api_secret=api_secret,
