@@ -1354,19 +1354,74 @@ class TradingEngine:
                             pnl_pct=f"{pnl_pct:.1%}",
                         )
 
-                        # ── Record the exit trade ────────────────────
+                        # ── Submit real SELL order via OrderRouter ────
+                        from src.execution.order_builder import OrderSpec
+                        from src.execution.order_router import OrderRouter
+                        from src.connectors.polymarket_clob import CLOBClient
                         from src.storage.models import TradeRecord
-                        self._db.insert_trade(TradeRecord(
-                            id=f"exit-{pos.market_id[:8]}-{int(time.time())}",
-                            order_id=f"auto-exit-{pos.market_id[:8]}",
+
+                        sell_price = round(
+                            current_price * (1 - self.config.execution.slippage_tolerance),
+                            4,
+                        )
+                        sell_order = OrderSpec(
+                            order_id=f"exit-{pos.market_id[:8]}-{int(time.time())}",
                             market_id=pos.market_id,
                             token_id=pos.token_id,
                             side="SELL",
-                            price=current_price,
+                            order_type=self.config.execution.default_order_type,
+                            price=sell_price,
                             size=pos.size,
                             stake_usd=pos.stake_usd,
-                            status=f"SIMULATED|{exit_reason}",
-                            dry_run=True,
+                            ttl_secs=self.config.execution.limit_order_ttl_secs,
+                            dry_run=self.config.execution.dry_run,
+                            metadata={"exit_reason": exit_reason},
+                        )
+
+                        sell_clob = CLOBClient()
+                        sell_router = OrderRouter(sell_clob, self.config.execution)
+                        try:
+                            sell_result = await sell_router.submit_order(sell_order)
+                            log.info(
+                                "engine.sell_order_result",
+                                market_id=pos.market_id[:8],
+                                status=sell_result.status,
+                                fill_price=sell_result.fill_price,
+                                fill_size=sell_result.fill_size,
+                            )
+                        except Exception as sell_err:
+                            log.error(
+                                "engine.sell_order_failed",
+                                market_id=pos.market_id[:8],
+                                error=str(sell_err),
+                            )
+                            sell_result = None
+                        finally:
+                            await sell_clob.close()
+
+                        # If live sell failed, skip archiving — keep position for retry
+                        if sell_result and sell_result.status == "failed":
+                            log.warning(
+                                "engine.sell_failed_keeping_position",
+                                market_id=pos.market_id[:8],
+                            )
+                            continue
+
+                        trade_status = (
+                            sell_result.status if sell_result
+                            else f"SIMULATED|{exit_reason}"
+                        )
+                        self._db.insert_trade(TradeRecord(
+                            id=sell_order.order_id,
+                            order_id=sell_order.order_id,
+                            market_id=pos.market_id,
+                            token_id=pos.token_id,
+                            side="SELL",
+                            price=sell_result.fill_price if sell_result else current_price,
+                            size=sell_result.fill_size if sell_result else pos.size,
+                            stake_usd=pos.stake_usd,
+                            status=trade_status,
+                            dry_run=sell_order.dry_run,
                         ))
 
                         # ── Archive position before deletion ─────────
