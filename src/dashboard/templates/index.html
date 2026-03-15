@@ -963,8 +963,9 @@
             <div class="panel-header">
                 <h2 class="panel-title">Copy Trading Dashboard</h2>
                 <div style="display:flex;gap:8px;align-items:center;">
+                    <span id="ct-category-badge" class="badge badge-ok">CRYPTO</span>
                     <span id="ct-mode-badge" class="badge badge-paper">SIMULATE</span>
-                    <button class="btn btn-sm" onclick="refreshCopyTrades()">Refresh</button>
+                    <span id="ct-auto-refresh" class="card-sub" style="font-size:11px;opacity:0.6;">Auto-refresh: 30s</span>
                 </div>
             </div>
 
@@ -1026,7 +1027,7 @@
             <div class="table-wrap">
                 <table>
                     <thead><tr>
-                        <th>Market</th><th>Direction</th><th>Strength</th>
+                        <th>Market</th><th>Category</th><th>Direction</th><th>Strength</th>
                         <th>Score</th><th>Whales</th><th>Total $</th>
                         <th>Avg Entry</th><th>Current</th><th>Edge</th><th>Names</th>
                     </tr></thead>
@@ -1063,7 +1064,7 @@
                     <thead><tr>
                         <th>Rank</th><th>Name</th><th>Tier</th>
                         <th>Score</th><th>P&L</th><th>Win Rate</th>
-                        <th>Volume</th><th>Positions</th><th>Recent</th>
+                        <th>Volume</th><th>Positions</th><th>Recent</th><th>Follow Signal</th>
                     </tr></thead>
                     <tbody id="ct-leaderboard-body"></tbody>
                 </table>

@@ -1176,6 +1176,13 @@ async function refreshCopyTrades() {
             }
         }
 
+        // Category badge
+        const catBadge = document.getElementById('ct-category-badge');
+        if (catBadge && s.preferred_categories) {
+            const cats = s.preferred_categories;
+            catBadge.textContent = cats.length ? cats.join(', ') : 'ALL';
+        }
+
         // KPI cards row 1
         safeText($('#ct-total-entries'), String(s.total_entries || 0));
         safeText($('#ct-entries-sub'), `Simulated: ${s.simulated || 0} | Live: ${s.live || 0}`);
@@ -1198,9 +1205,9 @@ async function refreshCopyTrades() {
 
     // ── Whale Intelligence ──────────────────────────────────────
     if (whale) {
-        const wallets = whale.wallets || [];
-        const signals = whale.signals || [];
-        const deltas = whale.deltas || [];
+        const wallets = whale.tracked_wallets || [];
+        const signals = whale.conviction_signals || [];
+        const deltas = whale.recent_deltas || [];
         const summary = whale.summary || {};
         const momentum = whale.momentum || [];
 
@@ -1248,6 +1255,12 @@ async function refreshCopyTrades() {
         // Last scan time
         const lastScan = summary.last_scan || (wallets.length ? wallets[0].last_scanned : null);
         safeText($('#ct-signal-updated'), lastScan ? `Last scan: ${shortDate(lastScan)}` : '—');
+
+        // Auto-refresh timestamp
+        const refreshEl = document.getElementById('ct-auto-refresh');
+        if (refreshEl) {
+            refreshEl.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+        }
     }
 }
 
@@ -1255,12 +1268,23 @@ function _renderConvictionSignals(signals) {
     const body = document.getElementById('ct-signals-body');
     if (!body) return;
     if (!signals.length) {
-        safeHTML(body, '<tr><td colspan="10" style="text-align:center;color:#5a5e72;">No conviction signals yet — enable Whale Scanner</td></tr>');
+        safeHTML(body, '<tr><td colspan="11" style="text-align:center;color:#5a5e72;">No conviction signals yet — enable Whale Scanner</td></tr>');
         return;
     }
-    // Show top 20 by conviction score
-    const top = signals.slice(0, 20);
+    // Sort: crypto first, then by conviction score
+    const sorted = [...signals].sort((a, b) => {
+        const aCrypto = (a.category || '').toUpperCase() === 'CRYPTO' ? 1 : 0;
+        const bCrypto = (b.category || '').toUpperCase() === 'CRYPTO' ? 1 : 0;
+        if (aCrypto !== bCrypto) return bCrypto - aCrypto;
+        return (b.conviction_score || 0) - (a.conviction_score || 0);
+    });
+    const top = sorted.slice(0, 25);
     safeHTML(body, top.map(s => {
+        const cat = (s.category || 'Other').toUpperCase();
+        const isCrypto = cat === 'CRYPTO';
+        const catBadge = isCrypto
+            ? '<span class="pill" style="background:rgba(76,141,255,0.15);color:#4c8dff;font-weight:700;">CRYPTO</span>'
+            : `<span class="pill" style="background:rgba(90,94,114,0.15);color:#8b8fa3;">${cat}</span>`;
         const dir = s.direction || '';
         const dirClass = dir === 'BULLISH' ? 'pnl-positive' : dir === 'BEARISH' ? 'pnl-negative' : '';
         const str = s.signal_strength || 'WEAK';
@@ -1270,8 +1294,10 @@ function _renderConvictionSignals(signals) {
         const edge = avgP > 0 ? ((curP - avgP) / avgP * 100) : 0;
         const names = (s.whale_names || []).slice(0, 3).join(', ');
         const more = (s.whale_names || []).length > 3 ? ` +${s.whale_names.length - 3}` : '';
-        return `<tr>
-            <td title="${s.title || s.market_slug || ''}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(s.title || s.market_slug || '').substring(0, 45)}</td>
+        const rowStyle = isCrypto ? 'border-left:3px solid #4c8dff;' : '';
+        return `<tr style="${rowStyle}">
+            <td title="${s.title || s.market_slug || ''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(s.title || s.market_slug || '').substring(0, 40)}</td>
+            <td>${catBadge}</td>
             <td class="${dirClass}">${dir}</td>
             <td><span style="color:${strColor};font-weight:600;">${str}</span></td>
             <td>${fmtP(s.conviction_score || 0)}</td>
@@ -1280,7 +1306,7 @@ function _renderConvictionSignals(signals) {
             <td>${fmtP(avgP * 100)}c</td>
             <td>${fmtP(curP * 100)}c</td>
             <td class="${pnlClass(edge)}">${edge >= 0 ? '+' : ''}${fmtP(edge)}%</td>
-            <td title="${(s.whale_names||[]).join(', ')}" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${names}${more}</td>
+            <td title="${(s.whale_names||[]).join(', ')}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${names}${more}</td>
         </tr>`;
     }).join(''));
 }
@@ -1329,6 +1355,10 @@ function _renderWhaleLeaderboard(wallets) {
         const tierColors = { LEGENDARY: '#fbbf24', ELITE: '#a855f7', PRO: '#4c8dff', RISING: '#5a5e72' };
         const pnl = w.total_pnl || 0;
         const wr = w.win_rate || 0;
+        const followSig = w.follow_signal || 'NO_DATA';
+        const followColors = { STRONG_FOLLOW: '#00d68f', FOLLOW: '#4c8dff', CAUTION: '#ff9f43', AVOID: '#ff4d6a', NO_DATA: '#5a5e72' };
+        const followLabel = followSig === 'STRONG_FOLLOW' ? 'STRONG FOLLOW'
+            : followSig === 'NO_DATA' ? '—' : followSig;
         return `<tr>
             <td style="font-weight:700;color:#4c8dff;">#${i + 1}</td>
             <td style="font-weight:600;">${w.name || w.address?.substring(0, 10) || '—'}${w.is_starred ? ' ★' : ''}</td>
@@ -1339,6 +1369,7 @@ function _renderWhaleLeaderboard(wallets) {
             <td>$${(w.total_volume || 0).toLocaleString()}</td>
             <td>${w.active_positions || 0}</td>
             <td>${w.recent_activity || 0} moves</td>
+            <td><span style="color:${followColors[followSig] || '#5a5e72'};font-weight:600;">${followLabel}</span>${w.follow_trades > 0 ? ` (${w.follow_win_rate}% WR, ${w.follow_trades} trades)` : ''}</td>
         </tr>`;
     }).join(''));
 }
@@ -6851,7 +6882,7 @@ const _updaterFns = {
     updateEquityCurve, updateEngineStatus, updateDrawdown, updateAudit,
     updateAlerts, updateConfig, updateAnalytics, updateRegime, updateWhaleTracker,
     updateAdminPanel, updateVaR, updateWatchlist, updateJournal, updateEquitySnapshots,
-    updateSettingsTab,
+    updateSettingsTab, refreshCopyTrades,
 };
 
 async function refreshAll() {

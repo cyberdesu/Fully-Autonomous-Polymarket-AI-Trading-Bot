@@ -227,8 +227,16 @@ def _get_conn() -> sqlite3.Connection:
     return conn
 
 
+_onchain_cache: dict[str, Any] = {"balance": None, "fetched_at": 0.0}
+_ONCHAIN_CACHE_TTL = 60  # seconds — only fetch on-chain balance once per minute
+
+
 def _fetch_onchain_balance() -> float | None:
-    """Fetch real USDC balance from Polymarket CLOB. Returns None on failure."""
+    """Fetch real USDC balance from Polymarket CLOB. Cached for 60s."""
+    now = time.time()
+    if (now - _onchain_cache["fetched_at"]) < _ONCHAIN_CACHE_TTL and _onchain_cache["balance"] is not None:
+        return _onchain_cache["balance"]
+
     try:
         from src.connectors.polymarket_clob import CLOBClient
         clob = CLOBClient()
@@ -243,9 +251,13 @@ def _fetch_onchain_balance() -> float | None:
 
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(_inner).result(timeout=10)
+            balance = pool.submit(_inner).result(timeout=10)
+
+        _onchain_cache["balance"] = balance
+        _onchain_cache["fetched_at"] = now
+        return balance
     except Exception:
-        return None
+        return _onchain_cache["balance"]  # return stale cache on error
 
 
 def _ensure_tables(conn: sqlite3.Connection) -> None:
@@ -6682,6 +6694,7 @@ def api_copy_trades() -> Any:
                 "total_staked": round(total_staked, 2),
                 "roi_pct": round((total_pnl / total_staked * 100) if total_staked > 0 else 0, 2),
                 "simulate_only": cfg.copy_trading.simulate_only,
+                "preferred_categories": cfg.copy_trading.preferred_categories,
             },
         })
     except Exception as exc:
