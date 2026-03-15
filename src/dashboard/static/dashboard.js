@@ -1476,12 +1476,12 @@ async function refreshFastTrack() {
 
     const s = d.stats || {};
 
-    // Badges
-    _updateFastTrackBadge(s.enabled);
+    // Badges — enabled/strategy/simulate_only are top-level, not inside stats
+    _updateFastTrackBadge(d.enabled);
 
     const simBadge = document.getElementById('ft-sim-badge');
     if (simBadge) {
-        if (s.simulate_only) {
+        if (d.simulate_only) {
             simBadge.textContent = 'SIMULATE';
             simBadge.className = 'badge badge-paper';
         } else {
@@ -1492,7 +1492,7 @@ async function refreshFastTrack() {
 
     const stratBadge = document.getElementById('ft-strategy-badge');
     if (stratBadge) {
-        const strat = (s.strategy || 'copy').toUpperCase();
+        const strat = (d.strategy || 'copy').toUpperCase();
         stratBadge.textContent = strat;
         stratBadge.className = strat === 'LLM' ? 'badge badge-live' : 'badge badge-ok';
     }

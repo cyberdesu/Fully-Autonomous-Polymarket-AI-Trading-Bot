@@ -125,7 +125,7 @@ wallet_scanner:
   whale_convergence_min_edge: 0.02
 copy_trading:
   enabled: true
-  simulate_only: true    # true = paper-trade copy trades (no real orders), false = live copy
+  simulate_only: true
   min_conviction_score: 30.0
   max_stake_per_copy: 5.0
   max_portfolio_pct: 0.1
@@ -133,8 +133,8 @@ copy_trading:
   - CRYPTO
   cooldown_minutes: 30
 fast_track:
-  enabled: false
-  strategy: copy             # "llm" or "copy"
+  enabled: true
+  strategy: copy
   simulate_only: true
   cycle_interval_secs: 30
   max_stake_per_trade: 5.0
