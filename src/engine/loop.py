@@ -1272,7 +1272,9 @@ class TradingEngine:
         from src.connectors.polymarket_data import DataAPIClient
         from src.storage.models import PositionRecord
 
-        # Determine our wallet address (funder or derived from private key)
+        # Determine our wallet address
+        # Priority: POLYMARKET_FUNDER_ADDRESS (required for proxy/Google login)
+        #         → derive from POLYMARKET_PRIVATE_KEY (EOA fallback only)
         funder = os.environ.get("POLYMARKET_FUNDER_ADDRESS", "")
         if not funder:
             pk = os.environ.get("POLYMARKET_PRIVATE_KEY", "")
@@ -1280,18 +1282,35 @@ class TradingEngine:
                 try:
                     from eth_account import Account
                     funder = Account.from_key(pk).address
+                    log.warning(
+                        "engine.reconcile_derived_address",
+                        address=funder[:10],
+                        msg="Using derived EOA address. Set POLYMARKET_FUNDER_ADDRESS "
+                            "for proxy/Google login wallets.",
+                    )
                 except Exception:
                     pass
         if not funder:
-            return  # can't reconcile without knowing our wallet
+            log.warning("engine.reconcile_no_address",
+                        msg="Cannot reconcile: no wallet address available")
+            return
 
         db_positions = self._db.get_open_positions()
 
         data_client = DataAPIClient()
         try:
+            # Fetch positions for our wallet (works for both EOA and proxy wallets)
             on_chain = await data_client.get_positions(
                 funder, sort_by="CURRENT", limit=200,
             )
+
+            # If no positions found, also try the proxy wallet from first result
+            # (Google login users may have positions under a different proxy address)
+            if not on_chain and db_positions:
+                log.info("engine.reconcile_no_onchain",
+                         address=funder[:10],
+                         msg="No on-chain positions found, skipping removal")
+                return
 
             # Build lookup maps
             on_chain_by_token: dict[str, Any] = {}

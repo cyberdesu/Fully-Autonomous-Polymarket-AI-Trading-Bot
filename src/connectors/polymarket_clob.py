@@ -131,6 +131,16 @@ class CLOBClient:
                 "POLYMARKET_API_PASSPHRASE, and POLYMARKET_PRIVATE_KEY env vars."
             )
 
+        # Proxy wallet validation (Google login / Magic wallet users)
+        if sig_type and sig_type != 0 and not funder:
+            log.warning(
+                "clob.proxy_wallet_no_funder",
+                sig_type=sig_type,
+                msg="POLYMARKET_SIGNATURE_TYPE indicates proxy wallet but "
+                    "POLYMARKET_FUNDER_ADDRESS is not set. "
+                    "Position reconciliation may not work correctly.",
+            )
+
         # SECURITY: Never log the private key
         log.info(
             "clob.init_signing_client", 
