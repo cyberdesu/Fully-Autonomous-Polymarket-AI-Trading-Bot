@@ -1071,7 +1071,7 @@ class TradingEngine:
                         size=order_result.fill_size,
                         stake_usd=position.stake_usd,
                         status=order_result.status.upper(),
-                        dry_run=order_result.status == "simulated",
+                        dry_run=self.config.execution.dry_run,
                     ))
                     self._db.upsert_position(PositionRecord(
                         market_id=ctx.market_id, token_id=token_id,
@@ -1117,7 +1117,7 @@ class TradingEngine:
         if self._db:
             mode = (
                 "\U0001f9ea Paper"
-                if order_statuses and order_statuses[0] == "simulated"
+                if self.config.execution.dry_run
                 else "\U0001f4b0 Live"
             )
             self._db.insert_alert(
@@ -1392,7 +1392,7 @@ class TradingEngine:
                     size=wp.size,
                     stake_usd=round(wp.initial_value, 2),
                     status="imported",
-                    dry_run=False,
+                    dry_run=self.config.execution.dry_run,
                 ))
 
                 # Subscribe to WebSocket for live price updates

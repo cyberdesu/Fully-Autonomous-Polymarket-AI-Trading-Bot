@@ -915,7 +915,7 @@ def api_trades() -> Any:
                 "opened_at": opened_at,
                 "closed_at": None,
                 "hours_held": round(hours_held, 1),
-                "is_paper": True,
+                "is_paper": cfg.execution.dry_run,
                 "sl_proximity": round(sl_dist, 3),
                 "tp_proximity": round(tp_dist, 3),
                 "sl_pct": sl_pct,
@@ -996,7 +996,7 @@ def api_trades() -> Any:
                     "opened_at": opened_at,
                     "closed_at": closed_at,
                     "hours_held": round(hours_held, 1),
-                    "is_paper": True,
+                    "is_paper": cfg.execution.dry_run,
                     "sl_proximity": 0,
                     "tp_proximity": 0,
                     "sl_pct": sl_pct,
@@ -1047,7 +1047,7 @@ def api_trades() -> Any:
                 "opened_at": d.get("created_at", ""),
                 "closed_at": None,
                 "hours_held": 0,
-                "is_paper": bool(d.get("dry_run", 1)),
+                "is_paper": bool(d.get("dry_run", cfg.execution.dry_run)),
                 "sl_proximity": 0,
                 "tp_proximity": 0,
                 "sl_pct": sl_pct,
@@ -1209,7 +1209,7 @@ def api_trade_detail(market_id: str) -> Any:
                 "liquidity": round(float(p.get("liquidity") or 0), 2),
                 "end_date": p.get("end_date") or "—",
                 "resolution_source": p.get("resolution_source") or "—",
-                "is_paper": True,
+                "is_paper": cfg.execution.dry_run,
             })
 
         # ── 2) Check closed_positions ────────────────────────────
@@ -1308,7 +1308,7 @@ def api_trade_detail(market_id: str) -> Any:
                     "liquidity": round(float(c.get("liquidity") or 0), 2),
                     "end_date": c.get("end_date") or "—",
                     "resolution_source": c.get("resolution_source") or "—",
-                    "is_paper": True,
+                    "is_paper": cfg.execution.dry_run,
                 })
             else:
                 # Fallback: try trades table
@@ -1351,7 +1351,7 @@ def api_trade_detail(market_id: str) -> Any:
                     "tp_trigger_pnl_pct": round(tp_pct * 100, 1),
                     "volume": 0, "liquidity": 0,
                     "end_date": "—", "resolution_source": "—",
-                    "is_paper": bool(t.get("dry_run", 1)),
+                    "is_paper": bool(t.get("dry_run", cfg.execution.dry_run)),
                 })
 
         # ── 3) Latest forecast for this market ───────────────────
