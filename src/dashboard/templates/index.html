@@ -958,7 +958,66 @@
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="tab-content" id="tab-copytrades" data-tab="copytrades">
 
-        <!-- ─── Header ─────────────────────────────────────────── -->
+        <!-- ─── Fast Track Mode ────────────────────────────────── -->
+        <section class="panel" style="border-top:3px solid #fbbf24;">
+            <div class="panel-header">
+                <h2 class="panel-title">Fast Track Mode</h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span id="ft-badge" class="badge badge-paper" style="cursor:pointer;" onclick="toggleFastTrack()" title="Toggle Fast Track">FAST TRACK: OFF</span>
+                    <span id="ft-sim-badge" class="badge badge-paper">SIM</span>
+                    <span id="ft-strategy-badge" class="badge badge-ok" style="cursor:pointer;" onclick="switchFastTrackStrategy()" title="Click to switch strategy">COPY</span>
+                </div>
+            </div>
+            <div class="grid grid-4" style="margin-bottom:12px;">
+                <div class="card" style="border-top:3px solid #fbbf24;">
+                    <div class="card-label">Strategy</div>
+                    <div class="card-value" id="ft-strategy">COPY</div>
+                    <div class="card-sub" id="ft-strategy-sub">Click badge to switch</div>
+                </div>
+                <div class="card" style="border-top:3px solid #00d68f;">
+                    <div class="card-label">Fast Track P&L</div>
+                    <div class="card-value" id="ft-pnl">$0.00</div>
+                    <div class="card-sub" id="ft-roi">ROI: 0%</div>
+                </div>
+                <div class="card" style="border-top:3px solid #4c8dff;">
+                    <div class="card-label">Open Positions</div>
+                    <div class="card-value" id="ft-open">0</div>
+                    <div class="card-sub" id="ft-open-sub">Max: 3</div>
+                </div>
+                <div class="card" style="border-top:3px solid #a855f7;">
+                    <div class="card-label">Total Trades</div>
+                    <div class="card-value" id="ft-trades">0</div>
+                    <div class="card-sub" id="ft-auto-exit">Auto-exited: 0</div>
+                </div>
+            </div>
+
+            <!-- Fast Track Positions -->
+            <div class="table-wrap" style="max-height:250px;overflow-y:auto;">
+                <table>
+                    <thead><tr>
+                        <th>Market</th><th>Strategy</th><th>Direction</th>
+                        <th>Entry</th><th>Current</th><th>Stake</th>
+                        <th>P&L</th><th>Opened</th>
+                    </tr></thead>
+                    <tbody id="ft-positions-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Fast Track Log -->
+            <h3 style="color:#e2e4ed;margin:12px 0 6px;font-size:13px;">Recent Fast Track Trades</h3>
+            <div class="table-wrap" style="max-height:200px;overflow-y:auto;">
+                <table>
+                    <thead><tr>
+                        <th>Time</th><th>Strategy</th><th>Mode</th><th>Market</th>
+                        <th>Direction</th><th>Entry</th><th>Exit</th>
+                        <th>Stake</th><th>P&L</th><th>Status</th>
+                    </tr></thead>
+                    <tbody id="ft-log-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ─── Copy Trading Header ───────────────────────────── -->
         <section class="panel">
             <div class="panel-header">
                 <h2 class="panel-title">Copy Trading Dashboard</h2>

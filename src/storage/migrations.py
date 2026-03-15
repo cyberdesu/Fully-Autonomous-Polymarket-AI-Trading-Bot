@@ -757,6 +757,34 @@ _MIGRATIONS: dict[int, list[str]] = {
         """ALTER TABLE copy_trade_log ADD COLUMN is_simulated INTEGER DEFAULT 1;""",
         """ALTER TABLE copy_trade_log ADD COLUMN pnl REAL DEFAULT 0;""",
     ],
+
+    # ── Migration 13: Fast Track Mode ─────────────────────────────
+    13: [
+        """ALTER TABLE positions ADD COLUMN fast_track INTEGER DEFAULT 0;""",
+        """ALTER TABLE closed_positions ADD COLUMN fast_track INTEGER DEFAULT 0;""",
+        """ALTER TABLE trades ADD COLUMN fast_track INTEGER DEFAULT 0;""",
+        """
+        CREATE TABLE IF NOT EXISTS fast_track_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_id TEXT NOT NULL,
+            question TEXT DEFAULT '',
+            strategy TEXT DEFAULT '',
+            direction TEXT DEFAULT '',
+            entry_price REAL DEFAULT 0,
+            exit_price REAL DEFAULT 0,
+            stake_usd REAL DEFAULT 0,
+            pnl REAL DEFAULT 0,
+            is_simulated INTEGER DEFAULT 1,
+            end_date TEXT DEFAULT '',
+            auto_exited INTEGER DEFAULT 0,
+            status TEXT DEFAULT '',
+            created_at TEXT,
+            closed_at TEXT
+        );
+        """,
+        """CREATE INDEX IF NOT EXISTS idx_ft_log_created ON fast_track_log(created_at);""",
+        """CREATE INDEX IF NOT EXISTS idx_ft_positions ON positions(fast_track);""",
+    ],
 }
 
 

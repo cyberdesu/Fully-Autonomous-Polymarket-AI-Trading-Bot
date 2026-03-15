@@ -127,6 +127,11 @@ class TradingEngine:
         self._ws_feed = WebSocketFeed()
         self._ws_task: asyncio.Task[None] | None = None
 
+        # ── Fast Track Mode ──
+        self._fast_track_task: asyncio.Task[None] | None = None
+        self._fast_track_cycle_count: int = 0
+        self._fast_track_last_result: Any = None
+
         # ── Rebalance / Arbitrage tracking ──
         self._last_rebalance_check: float = 0.0
         self._last_arbitrage_scan: float = 0.0
@@ -223,6 +228,13 @@ class TradingEngine:
         except Exception as e:
             log.warning("engine.ws_feed_start_error", error=str(e))
 
+        # Start Fast Track Mode if enabled
+        if self.config.fast_track.enabled:
+            self._fast_track_task = asyncio.create_task(self._run_fast_track_loop())
+            log.info("engine.fast_track_started",
+                     strategy=self.config.fast_track.strategy,
+                     interval=self.config.fast_track.cycle_interval_secs)
+
         while self._running:
             try:
                 await self._run_cycle()
@@ -236,10 +248,14 @@ class TradingEngine:
                 log.info("engine.sleeping", seconds=interval)
                 await asyncio.sleep(interval)
 
+        # Stop Fast Track loop
+        if self._fast_track_task and not self._fast_track_task.done():
+            self._fast_track_task.cancel()
+            log.info("engine.fast_track_stopped")
+
         log.info("engine.stopping_ws_feed")
         if self._ws_task and not self._ws_task.done():
             try:
-                # Thread-safe cleanup: we are in the main engine loop thread here.
                 await self._ws_feed.stop()
             except Exception as e:
                 log.warning("engine.ws_stop_error", error=str(e))
@@ -2119,9 +2135,39 @@ class TradingEngine:
             finally:
                 await clob.close()
 
+    # ── Fast Track Loop ────────────────────────────────────────────
+
+    async def _run_fast_track_loop(self) -> None:
+        """Concurrent loop for fast-track (ultra-short market) trading."""
+        from src.engine.fast_track import run_fast_track_cycle
+
+        interval = self.config.fast_track.cycle_interval_secs
+        log.info("fast_track.loop_started", interval=interval)
+
+        while self._running and self.config.fast_track.enabled:
+            try:
+                self._fast_track_cycle_count += 1
+                result = await run_fast_track_cycle(
+                    cycle_id=self._fast_track_cycle_count,
+                    config=self.config,
+                    db=self._db,
+                    latest_scan_result=self._latest_scan_result,
+                )
+                self._fast_track_last_result = result
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.error("fast_track.loop_error", error=str(e))
+
+            await asyncio.sleep(interval)
+
+        log.info("fast_track.loop_ended",
+                 total_cycles=self._fast_track_cycle_count)
+
     def get_status(self) -> dict[str, Any]:
         dd_state = self.drawdown.state
         pr_report = self.portfolio.assess(self._positions)
+        ft = self._fast_track_last_result
         return {
             "running": self._running,
             "cycle_count": self._cycle_count,
@@ -2138,4 +2184,14 @@ class TradingEngine:
                 if self._last_filter_stats else None
             ),
             "research_cache_size": self._research_cache.size(),
+            "fast_track": {
+                "enabled": self.config.fast_track.enabled,
+                "strategy": self.config.fast_track.strategy,
+                "cycle_count": self._fast_track_cycle_count,
+                "last_result": {
+                    "discovered": ft.discovered if ft else 0,
+                    "traded": ft.traded if ft else 0,
+                    "auto_exited": ft.auto_exited if ft else 0,
+                } if ft else None,
+            },
         }

@@ -47,7 +47,7 @@ const TAB_UPDATERS = {
     trading:  ['updatePositions', 'updateCandidates', 'updateForecasts', 'updateTrades'],
     analytics: ['updateAnalytics'],
     whales:   ['updateWhaleTracker'],
-    copytrades: ['refreshCopyTrades'],
+    copytrades: ['refreshCopyTrades', 'refreshFastTrack'],
     decisions: ['updateDecisionLog'],
     strategies: ['updateStrategiesTab'],
     journal:  ['updateVaR', 'updateWatchlist', 'updateJournal', 'updateEquitySnapshots'],
@@ -1423,6 +1423,142 @@ function _renderCopyLog(trades) {
             <td>${t.status || ''}</td>
         </tr>`;
     }).join(''));
+}
+
+// ─── Fast Track Mode ────────────────────────────────────────────
+
+async function toggleFastTrack() {
+    const badge = document.getElementById('ft-badge');
+    const currentlyOn = badge && badge.textContent.includes('ON');
+    const newValue = !currentlyOn;
+    const result = await apiFetch('/api/flags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag: 'fast_track_enabled', value: newValue }),
+    });
+    if (result && result.ok) {
+        _updateFastTrackBadge(newValue);
+    }
+}
+
+async function switchFastTrackStrategy() {
+    const badge = document.getElementById('ft-strategy-badge');
+    const current = badge ? badge.textContent.trim().toLowerCase() : 'copy';
+    const next = current === 'copy' ? 'llm' : 'copy';
+    const result = await apiFetch('/api/fast-track/strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: next }),
+    });
+    if (result && result.ok) {
+        badge.textContent = next.toUpperCase();
+        badge.className = next === 'llm'
+            ? 'badge badge-live'
+            : 'badge badge-ok';
+    }
+}
+
+function _updateFastTrackBadge(enabled) {
+    const badge = document.getElementById('ft-badge');
+    if (!badge) return;
+    if (enabled) {
+        badge.textContent = 'FAST TRACK: ON';
+        badge.className = 'badge badge-ok';
+    } else {
+        badge.textContent = 'FAST TRACK: OFF';
+        badge.className = 'badge badge-paper';
+    }
+}
+
+async function refreshFastTrack() {
+    const d = await apiFetch('/api/fast-track');
+    if (!d) return;
+
+    const s = d.stats || {};
+
+    // Badges
+    _updateFastTrackBadge(s.enabled);
+
+    const simBadge = document.getElementById('ft-sim-badge');
+    if (simBadge) {
+        if (s.simulate_only) {
+            simBadge.textContent = 'SIMULATE';
+            simBadge.className = 'badge badge-paper';
+        } else {
+            simBadge.textContent = 'LIVE';
+            simBadge.className = 'badge badge-live';
+        }
+    }
+
+    const stratBadge = document.getElementById('ft-strategy-badge');
+    if (stratBadge) {
+        const strat = (s.strategy || 'copy').toUpperCase();
+        stratBadge.textContent = strat;
+        stratBadge.className = strat === 'LLM' ? 'badge badge-live' : 'badge badge-ok';
+    }
+
+    // KPI cards
+    const pnlEl = document.getElementById('ft-pnl');
+    if (pnlEl) {
+        const pnl = s.total_pnl || 0;
+        pnlEl.textContent = fmtD(pnl);
+        pnlEl.className = `card-value ${pnlClass(pnl)}`;
+    }
+    safeText(document.getElementById('ft-open'), String(s.open_positions || 0));
+    safeText(document.getElementById('ft-trades'), String(s.total_trades || 0));
+
+    // Positions table
+    const posBody = document.getElementById('ft-positions-body');
+    if (posBody) {
+        const positions = d.positions || [];
+        if (!positions.length) {
+            safeHTML(posBody, '<tr><td colspan="8" style="text-align:center;color:#5a5e72;">No fast track positions</td></tr>');
+        } else {
+            safeHTML(posBody, positions.map(p => {
+                const pnl = p.pnl || 0;
+                const expiry = p.expiry || p.end_date || '';
+                return `<tr>
+                    <td title="${p.question || ''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(p.question || p.market_id || '').substring(0, 40)}</td>
+                    <td>${p.direction || ''}</td>
+                    <td>${fmtP((p.entry_price || 0) * 100)}c</td>
+                    <td>${fmtP((p.current_price || 0) * 100)}c</td>
+                    <td>${fmt(p.size || 0, 2)}</td>
+                    <td>${fmtD(p.stake_usd || 0)}</td>
+                    <td class="${pnlClass(pnl)}">${fmtD(pnl)}</td>
+                    <td>${expiry ? shortDate(expiry) : '—'}</td>
+                </tr>`;
+            }).join(''));
+        }
+    }
+
+    // Trade log table
+    const logBody = document.getElementById('ft-log-body');
+    if (logBody) {
+        const log = d.log || [];
+        if (!log.length) {
+            safeHTML(logBody, '<tr><td colspan="9" style="text-align:center;color:#5a5e72;">No fast track trades yet</td></tr>');
+        } else {
+            safeHTML(logBody, log.map(t => {
+                const isSim = t.is_simulated || t.dry_run;
+                const modeLabel = isSim
+                    ? '<span class="pill" style="background:rgba(255,159,67,0.15);color:#ff9f43;">SIM</span>'
+                    : '<span class="pill" style="background:rgba(0,214,143,0.15);color:#00d68f;">LIVE</span>';
+                const pnl = t.pnl || 0;
+                const stratLabel = (t.strategy || '').toUpperCase();
+                return `<tr>
+                    <td>${shortDate(t.created_at)}</td>
+                    <td>${modeLabel}</td>
+                    <td>${stratLabel}</td>
+                    <td title="${t.question || ''}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(t.question || t.market_id || '').substring(0, 35)}</td>
+                    <td>${t.side || t.direction || ''}</td>
+                    <td>${fmtP((t.price || 0) * 100)}c</td>
+                    <td>${fmtD(t.stake_usd || 0)}</td>
+                    <td class="${pnlClass(pnl)}">${fmtD(pnl)}</td>
+                    <td>${t.status || ''}</td>
+                </tr>`;
+            }).join(''));
+        }
+    }
 }
 
 async function updateDrawdown() {
@@ -6882,7 +7018,7 @@ const _updaterFns = {
     updateEquityCurve, updateEngineStatus, updateDrawdown, updateAudit,
     updateAlerts, updateConfig, updateAnalytics, updateRegime, updateWhaleTracker,
     updateAdminPanel, updateVaR, updateWatchlist, updateJournal, updateEquitySnapshots,
-    updateSettingsTab, refreshCopyTrades,
+    updateSettingsTab, refreshCopyTrades, refreshFastTrack,
 };
 
 async function refreshAll() {

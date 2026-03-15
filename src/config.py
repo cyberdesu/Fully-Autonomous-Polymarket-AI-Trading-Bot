@@ -287,6 +287,25 @@ class CopyTradingConfig(BaseModel):
     cooldown_minutes: int = 30
 
 
+class FastTrackConfig(BaseModel):
+    """Fast Track Mode — ultra-short market trading (e.g. 5-min Up/Down)."""
+    enabled: bool = False
+    strategy: str = "copy"            # "llm" or "copy"
+    simulate_only: bool = True
+    cycle_interval_secs: int = 30     # fast cycle every 30s
+    max_stake_per_trade: float = 5.0
+    max_open_positions: int = 3
+    auto_exit_before_expiry_secs: int = 60
+    max_market_duration_minutes: int = 10
+    min_market_duration_minutes: int = 2
+    whale_scan_interval_secs: int = 90
+    llm_timeout_secs: int = 10
+    min_edge: float = 0.03
+    market_keywords: list[str] = Field(default_factory=lambda: [
+        "up or down", "price hit", "above $", "below $",
+    ])
+
+
 class EngineConfig(BaseModel):
     """Main trading engine configuration."""
     scan_interval_minutes: int = 15
@@ -323,6 +342,7 @@ class BotConfig(BaseModel):
     engine: EngineConfig = Field(default_factory=EngineConfig)
     wallet_scanner: WalletScannerConfig = Field(default_factory=WalletScannerConfig)
     copy_trading: CopyTradingConfig = Field(default_factory=CopyTradingConfig)
+    fast_track: FastTrackConfig = Field(default_factory=FastTrackConfig)
 
     def redacted_dict(self) -> dict[str, Any]:
         """Return config dict with secret values masked."""

@@ -82,6 +82,7 @@ class PositionRecord(BaseModel):
     question: str = ""
     market_type: str = ""
     copy_source: str = ""
+    fast_track: int = 0
 
 
 class ClosedPositionRecord(BaseModel):

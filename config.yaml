@@ -132,6 +132,24 @@ copy_trading:
   preferred_categories:
   - CRYPTO
   cooldown_minutes: 30
+fast_track:
+  enabled: false
+  strategy: copy             # "llm" or "copy"
+  simulate_only: true
+  cycle_interval_secs: 30
+  max_stake_per_trade: 5.0
+  max_open_positions: 3
+  auto_exit_before_expiry_secs: 60
+  max_market_duration_minutes: 10
+  min_market_duration_minutes: 2
+  whale_scan_interval_secs: 90
+  llm_timeout_secs: 10
+  min_edge: 0.03
+  market_keywords:
+  - up or down
+  - price hit
+  - above $
+  - below $
 scanner:
   apiPool:
     strategy: least-loaded

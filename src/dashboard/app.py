@@ -1733,6 +1733,9 @@ def api_engine() -> Any:
         "engine_error": _engine_error,
         "copy_trading_enabled": cfg.copy_trading.enabled,
         "copy_trading_simulate": cfg.copy_trading.simulate_only,
+        "fast_track_enabled": cfg.fast_track.enabled,
+        "fast_track_strategy": cfg.fast_track.strategy,
+        "fast_track_simulate": cfg.fast_track.simulate_only,
     })
 
 
@@ -6704,6 +6707,91 @@ def api_copy_trades() -> Any:
         conn.close()
 
 
+# ─── API: Fast Track Mode ─────────────────────────────────────────
+
+@app.route("/api/fast-track")
+def api_fast_track() -> Any:
+    """Return fast-track status, active positions, and trade log."""
+    cfg = _get_config()
+    conn = _get_conn()
+    _ensure_tables(conn)
+    try:
+        # Active fast-track positions
+        ft_positions = conn.execute("""
+            SELECT market_id, token_id, direction, entry_price, current_price,
+                   size, stake_usd, pnl, question, market_type, opened_at
+            FROM positions WHERE fast_track = 1
+        """).fetchall()
+        positions = [dict(p) for p in ft_positions]
+
+        # Fast-track log
+        ft_log = conn.execute("""
+            SELECT * FROM fast_track_log ORDER BY created_at DESC LIMIT 50
+        """).fetchall()
+        log_entries = [dict(r) for r in ft_log]
+
+        # Stats
+        total_trades = len(log_entries)
+        closed = [e for e in log_entries if e.get("status") == "closed"]
+        total_pnl = sum(float(e.get("pnl", 0)) for e in closed)
+        total_staked = sum(float(e.get("stake_usd", 0)) for e in log_entries
+                          if e.get("status") != "closed" or e.get("pnl") is not None)
+        auto_exited = sum(1 for e in closed if e.get("auto_exited"))
+        simulated = sum(1 for e in log_entries if e.get("is_simulated"))
+
+        return jsonify({
+            "enabled": cfg.fast_track.enabled,
+            "strategy": cfg.fast_track.strategy,
+            "simulate_only": cfg.fast_track.simulate_only,
+            "cycle_interval_secs": cfg.fast_track.cycle_interval_secs,
+            "positions": positions,
+            "log": log_entries,
+            "stats": {
+                "total_trades": total_trades,
+                "open_positions": len(positions),
+                "total_pnl": round(total_pnl, 4),
+                "total_staked": round(total_staked, 2),
+                "roi_pct": round(total_pnl / total_staked * 100 if total_staked > 0 else 0, 2),
+                "auto_exited": auto_exited,
+                "simulated": simulated,
+                "max_open": cfg.fast_track.max_open_positions,
+                "max_stake": cfg.fast_track.max_stake_per_trade,
+            },
+        })
+    except Exception as exc:
+        return jsonify({
+            "enabled": cfg.fast_track.enabled,
+            "strategy": cfg.fast_track.strategy,
+            "positions": [], "log": [], "stats": {},
+            "error": str(exc),
+        }), 200
+    finally:
+        conn.close()
+
+
+@app.route("/api/fast-track/strategy", methods=["POST"])
+def api_fast_track_strategy() -> Any:
+    """Switch fast-track strategy between 'llm' and 'copy'."""
+    data = request.get_json(force=True)
+    strategy = data.get("strategy", "").lower()
+    if strategy not in ("llm", "copy"):
+        return jsonify({"ok": False, "error": "strategy must be 'llm' or 'copy'"}), 400
+
+    try:
+        config_path = Path(__file__).resolve().parent.parent.parent / "config.yaml"
+        with open(config_path) as f:
+            raw = yaml.safe_load(f) or {}
+        if "fast_track" not in raw:
+            raw["fast_track"] = {}
+        raw["fast_track"]["strategy"] = strategy
+        with open(config_path, "w") as f:
+            yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
+        _get_config.cache_clear()
+        return jsonify({"ok": True, "strategy": strategy})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 # ─── API: Watchlist ────────────────────────────────────────────────
 
 @app.route("/api/watchlist")
@@ -7062,6 +7150,8 @@ def api_flags_toggle() -> Any:
         "track_leaderboard": ("wallet_scanner", "track_leaderboard"),
         "copy_trading_enabled": ("copy_trading", "enabled"),
         "copy_trading_simulate_only": ("copy_trading", "simulate_only"),
+        "fast_track_enabled": ("fast_track", "enabled"),
+        "fast_track_simulate_only": ("fast_track", "simulate_only"),
     }
 
     if flag not in FLAG_MAP:
