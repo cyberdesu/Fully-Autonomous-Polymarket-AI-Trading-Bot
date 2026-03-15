@@ -204,6 +204,10 @@ class TradingEngine:
         )
         self._persist_engine_state()
 
+        # Check allowance/balance if live
+        if is_live_trading_enabled():
+            await self._ensure_allowance()
+
         # Graceful shutdown on SIGTERM / SIGINT
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
@@ -249,6 +253,41 @@ class TradingEngine:
         """Signal the engine to stop loop after current cycle."""
         log.info("engine.stop_requested")
         self._running = False
+
+    async def _ensure_allowance(self) -> None:
+        """Check for USDC allowance and balance at engine startup."""
+        from src.connectors.polymarket_clob import CLOBClient
+        clob = CLOBClient()
+        try:
+            log.info("engine.checking_allowance")
+            state = await clob.get_collateral_allowance()
+            
+            balance = float(state.get("balance", 0))
+            allowance = float(state.get("allowance", 0))
+
+            log.info("engine.wallet_status", balance=balance, allowance=allowance)
+
+            if balance == 0:
+                log.warning("engine.zero_balance", msg="USDC balance is 0. Bot cannot trade.")
+                if self._db:
+                    self._db.insert_alert("warning", "USDC balance is 0. Please fund your wallet.", "risk")
+                return
+
+            # If allowance is low, auto-approve
+            if allowance < 1000:
+                log.info("engine.auto_approving", msg="Allowance low/missing, sending approval...")
+                if self._db:
+                    self._db.insert_alert("info", "Auto-approving USDC allowance for Polymarket", "system")
+                
+                resp = await clob.update_collateral_allowance()
+                log.info("engine.approval_success", result=str(resp))
+            else:
+                log.info("engine.allowance_ready")
+
+        except Exception as e:
+            log.error("engine.allowance_check_error", error=str(e))
+        finally:
+            await clob.close()
 
     def _handle_signal(self, sig: signal.Signals) -> None:
         """Handle SIGTERM/SIGINT for graceful shutdown."""

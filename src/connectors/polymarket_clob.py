@@ -187,6 +187,29 @@ class CLOBClient:
         """Return the py-clob-client instance for order operations."""
         return self._ensure_signing_client()
 
+    async def get_collateral_allowance(self) -> dict[str, Any]:
+        """Check USDC (collateral) balance and allowance."""
+        import asyncio
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+        signing = self.get_signing_client()
+        
+        # This is a synchronous call in the library
+        return await asyncio.to_thread(
+            signing.get_balance_allowance,
+            BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+        )
+
+    async def update_collateral_allowance(self) -> dict[str, Any]:
+        """Grant max allowance for USDC to Polymarket."""
+        import asyncio
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+        signing = self.get_signing_client()
+        
+        return await asyncio.to_thread(
+            signing.update_balance_allowance,
+            BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+        )
+
 
 # ── Parsing helpers ──────────────────────────────────────────────────
 

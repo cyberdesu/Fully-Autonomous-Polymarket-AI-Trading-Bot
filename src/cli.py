@@ -596,5 +596,49 @@ def alerts(ctx: click.Context, limit: int) -> None:
     console.print("Configure alert channels in config.yaml under 'alerts'")
 
 
+# ─── WALLET ──────────────────────────────────────────────────────
+
+@cli.command("setup-wallet")
+@click.pass_context
+def setup_wallet(ctx: click.Context) -> None:
+    """Check USDC balance and approve Polymarket allowance."""
+    from src.connectors.polymarket_clob import CLOBClient
+
+    async def _setup() -> None:
+        clob = CLOBClient()
+        try:
+            console.print("[cyan]🔍 Checking wallet balance and allowance...[/cyan]")
+            state = await clob.get_collateral_allowance()
+            
+            # py-clob-client returns something like {"balance": "...", "allowance": "..."}
+            balance = float(state.get("balance", 0))
+            allowance = float(state.get("allowance", 0))
+
+            console.print(f"  [bold]Balance:[/bold]   ${balance:,.2f} USDC")
+            console.print(f"  [bold]Allowance:[/bold] ${allowance:,.2f} USDC")
+
+            if balance == 0:
+                console.print("[red]❌ Your USDC balance is 0. Please fund your wallet on Polygon.[/red]")
+                return
+
+            if allowance < 1000:  # Arbitrary threshold, enough for initial trades
+                console.print("\n[yellow]⚠ Allowance is low or not set.[/yellow]")
+                if click.confirm("Do you want to grant maximum allowance to Polymarket?"):
+                    console.print("[cyan]🚀 Sending approval transaction...[/cyan]")
+                    resp = await clob.update_collateral_allowance()
+                    console.print(f"[green]✅ Success![/green] {resp}")
+                else:
+                    console.print("[yellow]Skipped approval.[/yellow]")
+            else:
+                console.print("\n[green]✅ Wallet is ready for trading![/green]")
+
+        except Exception as e:
+            console.print(f"[red]❌ Error:[/red] {e}")
+        finally:
+            await clob.close()
+
+    _run(_setup())
+
+
 if __name__ == "__main__":
     cli()

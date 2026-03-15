@@ -85,6 +85,9 @@ reset-db: ## Wipe the trading database and start fresh
 	rm -f data/bot.db data/bot.db-shm data/bot.db-wal
 	@echo "✅ Database reset. Start the bot again to initialize a fresh state."
 
+setup-wallet: ## Check balance and approve USDC allowance
+	$(PYTHON) -m src.cli setup-wallet
+
 # ─── Clean ──────────────────────────────────────────────────────────
 
 clean: ## Remove build artifacts and caches
