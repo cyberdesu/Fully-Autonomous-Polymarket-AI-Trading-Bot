@@ -619,12 +619,19 @@ def setup_wallet(ctx: click.Context) -> None:
             allowances_dict = state.get("allowances", {})
             if isinstance(allowances_dict, dict) and allowances_dict:
                 # Use the maximum allowance available across all spenders
-                allowance = max(float(v) for v in allowances_dict.values()) / 1e6
+                raw_allowance = max(float(v) for v in allowances_dict.values())
             else:
-                allowance = float(state.get("allowance", 0)) / 1e6
+                raw_allowance = float(state.get("allowance", 0))
+
+            # uint256 max (2^256 - 1) = unlimited approval
+            is_unlimited = raw_allowance > 1e50
+            allowance = raw_allowance / 1e6
 
             console.print(f"  [bold]Balance:[/bold]   ${balance:,.2f} USDC")
-            console.print(f"  [bold]Allowance:[/bold] ${allowance:,.2f} USDC")
+            if is_unlimited:
+                console.print(f"  [bold]Allowance:[/bold] Unlimited (max approval)")
+            else:
+                console.print(f"  [bold]Allowance:[/bold] ${allowance:,.2f} USDC")
 
             if balance == 0:
                 console.print("[red]❌ Your USDC balance is 0. Please fund your wallet on Polygon.[/red]")
