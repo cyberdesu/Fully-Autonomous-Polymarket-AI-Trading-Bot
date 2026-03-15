@@ -81,7 +81,7 @@ class PositionRecord(BaseModel):
     )
     question: str = ""
     market_type: str = ""
-    market_type: str = ""
+    copy_source: str = ""
 
 
 class ClosedPositionRecord(BaseModel):

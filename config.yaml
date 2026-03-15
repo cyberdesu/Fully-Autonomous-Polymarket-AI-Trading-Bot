@@ -86,7 +86,7 @@ portfolio:
   max_single_event_exposure_pct: 0.25
   max_correlated_positions: 4
 execution:
-  dry_run: false
+  dry_run: true
   default_order_type: limit
   slippage_tolerance: 0.05
   max_retries: 3
@@ -123,6 +123,14 @@ wallet_scanner:
   conviction_edge_boost: 0.08
   conviction_edge_penalty: 0.02
   whale_convergence_min_edge: 0.02
+copy_trading:
+  enabled: true
+  min_conviction_score: 30.0
+  max_stake_per_copy: 5.0
+  max_portfolio_pct: 0.1
+  preferred_categories:
+  - CRYPTO
+  cooldown_minutes: 30
 scanner:
   apiPool:
     strategy: least-loaded
@@ -131,5 +139,5 @@ engine:
   scan_interval_minutes: 10
   max_markets_per_cycle: 10
   auto_start: true
-  paper_mode: false
+  paper_mode: true
   cycle_interval_secs: 180

@@ -181,14 +181,15 @@ class Database:
             INSERT OR REPLACE INTO positions
                 (market_id, token_id, direction, entry_price,
                  size, stake_usd, current_price, pnl, opened_at,
-                 question, market_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 question, market_type, copy_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 pos.market_id, pos.token_id, pos.direction,
                 pos.entry_price, pos.size, pos.stake_usd,
                 pos.current_price, pos.pnl, pos.opened_at,
                 pos.question, pos.market_type,
+                getattr(pos, 'copy_source', ''),
             ),
         )
         self.conn.commit()

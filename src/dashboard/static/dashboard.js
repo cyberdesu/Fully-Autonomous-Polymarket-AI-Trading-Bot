@@ -1079,6 +1079,11 @@ async function updateEngineStatus() {
         engineBadge.textContent = '⚫ ENGINE OFF'; engineBadge.className = 'badge badge-paper'; engineBadge.style.display = '';
     }
 
+    // Update copy trading badge
+    if (d.copy_trading_enabled !== undefined) {
+        updateCopyTradingBadge(d.copy_trading_enabled);
+    }
+
     // Toggle start/stop buttons
     const btnStart = document.getElementById('btn-engine-start');
     const btnStop  = document.getElementById('btn-engine-stop');
@@ -1116,6 +1121,33 @@ async function toggleEngine(start) {
         setTimeout(updateEngineStatus, 1000);
     } catch (e) {
         console.error('Engine toggle error:', e);
+    }
+}
+
+// ─── Copy Trading Toggle ────────────────────────────────────────
+async function toggleCopyTrading() {
+    const badge = document.getElementById('copy-trade-badge');
+    const currentlyOn = badge && badge.textContent.includes('ON');
+    const newValue = !currentlyOn;
+    const result = await apiFetch('/api/flags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag: 'copy_trading_enabled', value: newValue }),
+    });
+    if (result && result.ok) {
+        updateCopyTradingBadge(newValue);
+    }
+}
+
+function updateCopyTradingBadge(enabled) {
+    const badge = document.getElementById('copy-trade-badge');
+    if (!badge) return;
+    if (enabled) {
+        badge.textContent = 'COPY: ON';
+        badge.className = 'badge badge-ok';
+    } else {
+        badge.textContent = 'COPY: OFF';
+        badge.className = 'badge badge-paper';
     }
 }
 

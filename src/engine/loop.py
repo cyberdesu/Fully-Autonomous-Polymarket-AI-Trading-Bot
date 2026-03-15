@@ -428,6 +428,7 @@ class TradingEngine:
             await self._check_positions()
             await self._maybe_rebalance()
             await self._maybe_scan_wallets()
+            await self._handle_copy_trades()
             await self._maybe_scan_arbitrage(markets)
             cycle.status = "completed"
 
@@ -1846,6 +1847,244 @@ class TradingEngine:
             )
         except Exception as e:
             log.warning("engine.wallet_scan_error", error=str(e))
+
+    # ── Copy Trading ─────────────────────────────────────────────────
+
+    async def _handle_copy_trades(self) -> None:
+        """Process whale deltas and auto-execute copy trades."""
+        cfg = self.config.copy_trading
+        if not cfg.enabled or not self._latest_scan_result:
+            return
+
+        deltas = self._latest_scan_result.deltas
+        if not deltas:
+            return
+
+        now = time.time()
+        cooldown_secs = cfg.cooldown_minutes * 60
+
+        for delta in deltas:
+            try:
+                if delta.action == "NEW_ENTRY":
+                    await self._copy_entry(delta, cfg, now, cooldown_secs)
+                elif delta.action == "EXIT":
+                    await self._copy_exit(delta)
+            except Exception as e:
+                log.warning("engine.copy_trade_error",
+                            market=delta.market_slug, error=str(e))
+
+    async def _copy_entry(self, delta, cfg, now: float, cooldown_secs: float) -> None:
+        """Mirror a whale's new entry as a copy trade."""
+        if not hasattr(self, '_copy_cooldown'):
+            self._copy_cooldown: dict[str, float] = {}
+
+        # Cooldown check
+        if delta.market_slug in self._copy_cooldown:
+            if now - self._copy_cooldown[delta.market_slug] < cooldown_secs:
+                return
+
+        # Fetch market to check category + get token IDs
+        from src.connectors.polymarket_gamma import GammaClient, classify_market_type
+        client = GammaClient()
+        try:
+            market = await client.get_market(delta.market_slug)
+        except Exception:
+            log.warning("engine.copy_market_not_found", slug=delta.market_slug)
+            return
+        finally:
+            await client.close()
+
+        # Filter by preferred categories
+        mtype = market.market_type or classify_market_type(market.question)
+        if cfg.preferred_categories and mtype not in cfg.preferred_categories:
+            log.info("engine.copy_skip_category",
+                     market=delta.market_slug[:30], type=mtype)
+            return
+
+        # Check conviction score
+        conviction = 0.0
+        for sig in (self._latest_scan_result.conviction_signals or []):
+            if sig.market_slug == delta.market_slug:
+                conviction = sig.conviction_score
+                break
+        if conviction < cfg.min_conviction_score:
+            log.info("engine.copy_skip_conviction",
+                     market=delta.market_slug[:30], score=conviction)
+            return
+
+        # Portfolio limits
+        if self._db:
+            positions = self._db.get_open_positions()
+            copy_total = sum(
+                p.stake_usd for p in positions
+                if getattr(p, 'copy_source', '')
+            )
+            max_copy = self.config.risk.bankroll * cfg.max_portfolio_pct
+            if copy_total + cfg.max_stake_per_copy > max_copy:
+                log.info("engine.copy_skip_portfolio_limit",
+                         current=copy_total, max=max_copy)
+                return
+            # Skip if already holding
+            if any(p.market_id == market.id for p in positions):
+                return
+
+        # Find token + direction
+        token_id = ""
+        for tok in market.tokens:
+            if tok.outcome.lower() == delta.outcome.lower():
+                token_id = tok.token_id
+                break
+        if not token_id and market.tokens:
+            token_id = market.tokens[0].token_id
+        if not token_id:
+            return
+
+        direction = "BUY_YES" if delta.outcome.lower() == "yes" else "BUY_NO"
+
+        # Fetch live price from CLOB orderbook
+        price = delta.current_price if delta.current_price > 0 else 0.5
+        try:
+            ob = await CLOBClient().get_orderbook(token_id)
+            if ob.best_ask > 0 and ob.best_ask < 1.0:
+                price = ob.best_ask
+        except Exception:
+            pass
+
+        size = round(cfg.max_stake_per_copy / price, 2) if price > 0 else 0
+        if size <= 0:
+            return
+
+        # Build + submit order
+        from src.execution.order_builder import OrderSpec
+        from src.execution.order_router import OrderRouter
+
+        limit_price = round(price * (1 + self.config.execution.slippage_tolerance), 4)
+        order = OrderSpec(
+            order_id=f"copy-{delta.market_slug[:8]}-{int(time.time())}",
+            market_id=market.id,
+            token_id=token_id,
+            side="BUY",
+            order_type=self.config.execution.default_order_type,
+            price=limit_price,
+            size=size,
+            stake_usd=cfg.max_stake_per_copy,
+            ttl_secs=self.config.execution.limit_order_ttl_secs,
+            dry_run=self.config.execution.dry_run,
+            metadata={"copy_source": delta.wallet_name, "market_price": price},
+        )
+
+        clob = CLOBClient()
+        router = OrderRouter(clob, self.config.execution)
+        try:
+            result = await router.submit_order(order)
+            log.info("engine.copy_trade_executed",
+                     market=delta.title[:50], whale=delta.wallet_name,
+                     status=result.status, price=result.fill_price, stake=cfg.max_stake_per_copy)
+
+            if self._db:
+                from src.storage.models import TradeRecord, PositionRecord
+                self._db.insert_trade(TradeRecord(
+                    id=order.order_id, order_id=order.order_id,
+                    market_id=market.id, token_id=token_id,
+                    side=direction, price=result.fill_price,
+                    size=result.fill_size, stake_usd=cfg.max_stake_per_copy,
+                    status=result.status, dry_run=self.config.execution.dry_run,
+                ))
+                self._db.upsert_position(PositionRecord(
+                    market_id=market.id, token_id=token_id,
+                    direction=direction, entry_price=result.fill_price,
+                    size=result.fill_size, stake_usd=cfg.max_stake_per_copy,
+                    current_price=result.fill_price, pnl=0.0,
+                    question=delta.title[:200], market_type=mtype,
+                    copy_source=delta.wallet_name,
+                ))
+                # Log to copy_trade_log
+                import datetime as _dt
+                self._db.conn.execute("""
+                    INSERT INTO copy_trade_log
+                        (market_slug, market_id, token_id, whale_name,
+                         whale_address, action, outcome, direction,
+                         stake_usd, price, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    delta.market_slug, market.id, token_id,
+                    delta.wallet_name, delta.wallet_address,
+                    "COPY_ENTRY", delta.outcome, direction,
+                    cfg.max_stake_per_copy, result.fill_price,
+                    result.status,
+                    _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                ))
+                self._db.conn.commit()
+                self._db.insert_alert(
+                    "info",
+                    f"📋 COPY TRADE: Mirrored {delta.wallet_name} → "
+                    f"{delta.title[:50]} ({direction} ${cfg.max_stake_per_copy:.2f})",
+                    "copy_trading",
+                )
+            self._copy_cooldown[delta.market_slug] = now
+        finally:
+            await clob.close()
+
+    async def _copy_exit(self, delta) -> None:
+        """Exit a copied position when the source whale exits."""
+        if not self._db:
+            return
+        positions = self._db.get_open_positions()
+        for pos in positions:
+            if not getattr(pos, 'copy_source', ''):
+                continue
+            # Match by market_slug in market_id or by whale name
+            if delta.market_slug not in pos.market_id and delta.wallet_name != pos.copy_source:
+                continue
+
+            log.info("engine.copy_exit_triggered",
+                     market=pos.market_id[:8], whale=delta.wallet_name)
+
+            # Submit sell order
+            from src.execution.order_builder import OrderSpec
+            from src.execution.order_router import OrderRouter
+
+            sell_price = pos.current_price if pos.current_price > 0 else 0.5
+            try:
+                ob = await CLOBClient().get_orderbook(pos.token_id)
+                if ob.best_bid > 0:
+                    sell_price = ob.best_bid
+            except Exception:
+                pass
+
+            limit_price = round(sell_price * (1 - self.config.execution.slippage_tolerance), 4)
+            sell_order = OrderSpec(
+                order_id=f"copy-exit-{pos.market_id[:8]}-{int(time.time())}",
+                market_id=pos.market_id,
+                token_id=pos.token_id,
+                side="SELL",
+                order_type=self.config.execution.default_order_type,
+                price=limit_price,
+                size=pos.size,
+                stake_usd=pos.stake_usd,
+                ttl_secs=self.config.execution.limit_order_ttl_secs,
+                dry_run=self.config.execution.dry_run,
+                metadata={"copy_source": pos.copy_source, "market_price": sell_price},
+            )
+            clob = CLOBClient()
+            router = OrderRouter(clob, self.config.execution)
+            try:
+                result = await router.submit_order(sell_order)
+                if result.status != "failed":
+                    pnl = round((sell_price - pos.entry_price) * pos.size, 4)
+                    self._db.archive_position(
+                        pos=pos, exit_price=sell_price,
+                        pnl=pnl, close_reason="WHALE_EXIT",
+                    )
+                    self._db.remove_position(pos.market_id)
+                    self._db.insert_alert(
+                        "info",
+                        f"📋 COPY EXIT: {delta.wallet_name} exited → "
+                        f"sold {pos.question[:40]} (P&L ${pnl:+.2f})",
+                        "copy_trading",
+                    )
+            finally:
+                await clob.close()
 
     def get_status(self) -> dict[str, Any]:
         dd_state = self.drawdown.state

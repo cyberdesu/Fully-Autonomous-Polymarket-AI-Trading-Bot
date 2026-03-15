@@ -276,6 +276,16 @@ class WalletScannerConfig(BaseModel):
     custom_wallets: list[str] = Field(default_factory=list)  # user-added wallet addresses
 
 
+class CopyTradingConfig(BaseModel):
+    """Copy trading — auto-mirror whale positions."""
+    enabled: bool = False
+    min_conviction_score: float = 30.0
+    max_stake_per_copy: float = 5.0
+    max_portfolio_pct: float = 0.10  # max 10% of bankroll in copy trades
+    preferred_categories: list[str] = Field(default_factory=lambda: ["CRYPTO"])
+    cooldown_minutes: int = 30
+
+
 class EngineConfig(BaseModel):
     """Main trading engine configuration."""
     scan_interval_minutes: int = 15
@@ -311,6 +321,7 @@ class BotConfig(BaseModel):
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
     wallet_scanner: WalletScannerConfig = Field(default_factory=WalletScannerConfig)
+    copy_trading: CopyTradingConfig = Field(default_factory=CopyTradingConfig)
 
     def redacted_dict(self) -> dict[str, Any]:
         """Return config dict with secret values masked."""

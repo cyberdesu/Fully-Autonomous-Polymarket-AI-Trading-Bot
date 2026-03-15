@@ -727,6 +727,30 @@ _MIGRATIONS: dict[int, list[str]] = {
         VALUES ('default-ai', 'default-paper', 10000, datetime('now'));
         """,
     ],
+    # ── Migration 11: Copy Trading ────────────────────────────────
+    11: [
+        """ALTER TABLE positions ADD COLUMN copy_source TEXT DEFAULT '';""",
+        """ALTER TABLE closed_positions ADD COLUMN copy_source TEXT DEFAULT '';""",
+        """
+        CREATE TABLE IF NOT EXISTS copy_trade_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_slug TEXT NOT NULL,
+            market_id TEXT DEFAULT '',
+            token_id TEXT DEFAULT '',
+            whale_name TEXT DEFAULT '',
+            whale_address TEXT DEFAULT '',
+            action TEXT DEFAULT '',
+            outcome TEXT DEFAULT '',
+            direction TEXT DEFAULT '',
+            stake_usd REAL DEFAULT 0,
+            price REAL DEFAULT 0,
+            status TEXT DEFAULT '',
+            created_at TEXT
+        );
+        """,
+        """CREATE INDEX IF NOT EXISTS idx_copy_log_market ON copy_trade_log(market_slug);""",
+        """CREATE INDEX IF NOT EXISTS idx_copy_log_created ON copy_trade_log(created_at);""",
+    ],
 }
 
 

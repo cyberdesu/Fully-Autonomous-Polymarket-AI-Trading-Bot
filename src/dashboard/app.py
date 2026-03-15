@@ -1639,6 +1639,7 @@ def api_engine() -> Any:
                 "uptime_secs": round(time.time() - _engine_started_at, 0),
                 "engine_embedded": True,
                 "engine_error": _engine_error,
+                "copy_trading_enabled": cfg.copy_trading.enabled,
             })
         except Exception:
             pass
@@ -1664,6 +1665,7 @@ def api_engine() -> Any:
                 "positions": state.get("positions", 0),
                 "engine_embedded": True,
                 "engine_error": _engine_error,
+                "copy_trading_enabled": cfg.copy_trading.enabled,
             })
     except Exception:
         pass
@@ -1680,6 +1682,7 @@ def api_engine() -> Any:
         "last_cycle": None,
         "engine_embedded": True,
         "engine_error": _engine_error,
+        "copy_trading_enabled": cfg.copy_trading.enabled,
     })
 
 
@@ -6944,6 +6947,7 @@ def api_flags_toggle() -> Any:
         "metrics_enabled": ("observability", "enable_metrics"),
         "fetch_full_content": ("research", "fetch_full_content"),
         "track_leaderboard": ("wallet_scanner", "track_leaderboard"),
+        "copy_trading_enabled": ("copy_trading", "enabled"),
     }
 
     if flag not in FLAG_MAP:
